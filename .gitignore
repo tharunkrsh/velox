@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Data cache
+.cache/
+
+# VS Code
+.vscode/
+
+# Environment
+.env
+
+# uv
+.python-version
+
+# Node (for dashboard later)
+node_modules/
+dashboard/dist/
+
+# OS
+.DS_Store
+Thumbs.db
