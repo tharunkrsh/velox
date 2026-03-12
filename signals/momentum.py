@@ -26,12 +26,14 @@ class MomentumStrategy:
         symbols:        list,
         lookback:       int   = 20,    # bars to look back
         threshold:      float = 0.02,  # min return to trigger long (2%)
+        regime_detector       = None,
     ):
         self.data      = data_handler
         self.symbols   = symbols
         self.lookback  = lookback
         self.threshold = threshold
         self.events    = None  # injected by engine
+        self.regime_detector  = regime_detector
 
     def on_market(self, event: MarketEvent) -> None:
         """
@@ -42,10 +44,11 @@ class MomentumStrategy:
             self._calculate(symbol)
 
     def _calculate(self, symbol: str) -> None:
-        """
-        Calculate momentum for a single symbol.
-        Fires a SignalEvent if conditions are met.
-        """
+        if self.regime_detector is not None:
+            regime = self.regime_detector.get_regime()
+            if regime == "bear":
+                return
+
         bars = self.data.get_latest(symbol, n=self.lookback + 1)
 
         # Need enough bars to calculate momentum

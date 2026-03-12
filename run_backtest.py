@@ -16,6 +16,8 @@ from core.execution import SimulatedExecutionHandler
 from core.risk import RiskManager
 from data.historical import HistoricalDataHandler
 from research.tearsheet import Tearsheet
+from signals.regime import RegimeDetector
+from research.visualizer import Visualizer
 
 # ─── Logging setup ────────────────────────────────────────────────────────────
 
@@ -64,18 +66,20 @@ from signals.momentum import MomentumStrategy
 from signals.pairs import KalmanPairsStrategy
 from signals.ml_signal import MLSignalStrategy
 
+regime = RegimeDetector(
+    data_handler   = data,
+    symbol         = "AAPL",
+    n_states       = 3,
+    lookback       = 252,
+    retrain_every  = 63,
+)
+
 momentum = MomentumStrategy(
     data_handler = data,
     symbols      = SYMBOLS,
     lookback     = 20,
     threshold    = 0.02,
-)
-
-pairs = KalmanPairsStrategy(
-    data_handler   = data,
-    pair           = ("PEP", "CVX"),
-    z_score_entry  = 2.0,
-    z_score_exit   = 0.5,
+    regime_detector = regime,
 )
 
 ml = MLSignalStrategy(
@@ -84,11 +88,12 @@ ml = MLSignalStrategy(
     lookback     = 252,
     retrain_every= 21,
     threshold    = 0.6,
+    regime_detector = regime,
 )
 
 engine = Engine(
     data_handler      = data,
-    strategies        = [ml],
+    strategies        = [regime, ml],
     portfolio         = portfolio,
     execution_handler = execution,
 )
@@ -99,6 +104,9 @@ if __name__ == "__main__":
 
     tearsheet = Tearsheet(portfolio, output_dir="research/output")
     full_metrics = tearsheet.generate(strategy_name="ml_signal")
+
+    viz = Visualizer(portfolio, regime_detector=regime, data_handler=data)
+    viz.generate(symbol="AAPL", name="velox")
 
     print("\n── Results ──────────────────────────────")
     for k, v in portfolio.metrics.items():

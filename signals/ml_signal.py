@@ -47,6 +47,7 @@ class MLSignalStrategy:
         retrain_every:  int = 21,       # retrain model every N bars (~ monthly)
         min_train_bars: int = 126,      # minimum bars before first training
         threshold:      float = 0.6,   # min predicted probability to trade
+        regime_detector       = None,
     ):
         self.data           = data_handler
         self.symbols        = symbols
@@ -58,6 +59,7 @@ class MLSignalStrategy:
 
         self.models  = {}   # symbol → trained LightGBM model
         self.bar_count = 0
+        self.regime_detector = regime_detector
 
     def on_market(self, event: MarketEvent) -> None:
         self.bar_count += 1
@@ -181,10 +183,10 @@ class MLSignalStrategy:
     # ─── Prediction ───────────────────────────────────────────────────────────
 
     def _predict(self, symbol: str) -> None:
-        """
-        Generate a signal based on model prediction.
-        Only trades when model is confident (prob > threshold).
-        """
+        if self.regime_detector is not None:
+            regime = self.regime_detector.get_regime()
+            if regime == "bear":
+                return
         if symbol not in self.models:
             return
 

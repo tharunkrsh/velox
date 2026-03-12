@@ -118,6 +118,8 @@ class Engine:
                 # New bar arrived — wake up all strategies
                 for strategy in self.strategies:
                     strategy.on_market(event)
+                # Record equity on every bar for a complete chart
+                self.portfolio._update_equity(event.timestamp)
 
             case EventType.SIGNAL:
                 # Strategy saw an opportunity — portfolio decides action

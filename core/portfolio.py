@@ -51,7 +51,7 @@ class Portfolio:
             return
 
         price      = float(latest["close"].iloc[-1])
-        allocation = self.cash * 0.10 * strength
+        allocation = self.cash * 0.20 * strength
         quantity   = allocation / price
 
         if quantity < 1:
@@ -88,7 +88,6 @@ class Portfolio:
 
         if direction == OrderDirection.BUY:
             if current_qty < 0:
-                # Covering a short — just pay the cost to buy back
                 self.cash -= event.total_cost
                 new_qty    = current_qty + quantity
             else:
@@ -118,7 +117,7 @@ class Portfolio:
             f"@ {price:.2f} | Position: {new_qty:.2f} | Cash: {self.cash:.2f}"
         )
 
-        self._update_equity()
+        self._update_equity(event.timestamp)
 
     def _close_position(self, symbol: str) -> None:
         quantity = self.positions.get(symbol, 0.0)
@@ -134,7 +133,7 @@ class Portfolio:
         )
         self.events.put(order)
 
-    def _update_equity(self) -> None:
+    def _update_equity(self, timestamp=None) -> None:
         market_value = 0.0
 
         for symbol, qty in self.positions.items():
@@ -157,7 +156,7 @@ class Portfolio:
 
         if total_equity > self.initial_capital * 0.3:
             self.equity_curve.append({
-                "timestamp"    : datetime.utcnow(),
+                "timestamp"    : timestamp or datetime.utcnow(),
                 "cash"         : self.cash,
                 "market_value" : market_value,
                 "total_equity" : total_equity,
