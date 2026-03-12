@@ -15,6 +15,7 @@ from core.portfolio import Portfolio
 from core.execution import SimulatedExecutionHandler
 from core.risk import RiskManager
 from data.historical import HistoricalDataHandler
+from research.tearsheet import Tearsheet
 
 # ─── Logging setup ────────────────────────────────────────────────────────────
 
@@ -95,6 +96,9 @@ engine = Engine(
 if __name__ == "__main__":
     logging.info("Starting VELOX backtest...")
     engine.run()
+
+    tearsheet = Tearsheet(portfolio, output_dir="research/output")
+    full_metrics = tearsheet.generate(strategy_name="ml_signal")
 
     print("\n── Results ──────────────────────────────")
     for k, v in portfolio.metrics.items():
