@@ -26,7 +26,7 @@ logging.basicConfig(
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-SYMBOLS     = ["AAPL", "MSFT", "GOOGL"]
+SYMBOLS = ["AAPL", "MSFT", "GOOGL", "PEP", "CVX"]
 START_DATE  = "2020-01-01"
 END_DATE    = "2023-12-31"
 CAPITAL     = 100_000.0
@@ -60,6 +60,7 @@ risk = RiskManager(
 # ─── Run ──────────────────────────────────────────────────────────────────────
 
 from signals.momentum import MomentumStrategy
+from signals.pairs import KalmanPairsStrategy
 
 momentum = MomentumStrategy(
     data_handler = data,
@@ -68,9 +69,16 @@ momentum = MomentumStrategy(
     threshold    = 0.02,
 )
 
+pairs = KalmanPairsStrategy(
+    data_handler   = data,
+    pair           = ("PEP", "CVX"),
+    z_score_entry  = 2.0,
+    z_score_exit   = 0.5,
+)
+
 engine = Engine(
     data_handler      = data,
-    strategies        = [momentum],
+    strategies        = [pairs],
     portfolio         = portfolio,
     execution_handler = execution,
 )

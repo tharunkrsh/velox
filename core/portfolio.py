@@ -1,12 +1,10 @@
 """
 portfolio.py - Tracks positions, cash, and P&L for VELOX.
 
-Responsibilities:
-    - Receive SignalEvents from strategies
-    - Decide position sizes using Kelly Criterion
-    - Fire OrderEvents to the execution handler
-    - Receive FillEvents and update positions + cash
-    - Track equity curve over time
+Supports both long and short positions.
+
+Long position:  positive quantity, costs cash to open, returns cash to close
+Short position: negative quantity, returns cash to open, costs cash to close
 """
 
 import logging
@@ -26,63 +24,51 @@ logger = logging.getLogger(__name__)
 
 class Portfolio:
 
-    def __init__(
-        self,
-        data_handler,
-        initial_capital: float = 100_000.0,
-    ):
-        self.data         = data_handler
+    def __init__(self, data_handler, initial_capital: float = 100_000.0):
+        self.data            = data_handler
         self.initial_capital = initial_capital
-        self.events       = None  # injected by engine
+        self.events          = None
 
-        # Current state
-        self.cash: float         = initial_capital
-        self.positions: Dict[str, float] = {}  # symbol → quantity held
-        self.holdings: Dict[str, float]  = {}  # symbol → market value
+        self.cash: float                 = initial_capital
+        self.positions: Dict[str, float] = {}
+        self.avg_price: Dict[str, float] = {}
 
-        # History — one row per bar
-        self.equity_curve: List[dict] = []
-
-        # All fills ever received
+        self.equity_curve: List[dict]  = []
         self.fill_history: List[FillEvent] = []
-
-        # Performance metrics — populated after backtest
-        self.metrics: dict = {}
-
-    # ─── Event Handlers ───────────────────────────────────────────────────────
+        self.metrics: dict             = {}
 
     def on_signal(self, event: SignalEvent) -> None:
-        """
-        Receive a signal from a strategy.
-        Calculate order size and fire an OrderEvent.
-        """
         symbol    = event.symbol
         direction = event.direction
-        strength  = event.strength  # 0.0 to 1.0
+        strength  = event.strength
 
         if direction == SignalDirection.EXIT:
             self._close_position(symbol)
             return
 
-        # Size the position: allocate a fraction of capital
-        # Strength scales the allocation (Kelly-inspired)
-        allocation  = self.cash * 0.10 * strength  # max 10% per position
-        latest      = self.data.get_latest(symbol, n=1)
-
+        latest = self.data.get_latest(symbol, n=1)
         if latest.empty:
             return
 
-        price    = float(latest["close"].iloc[-1])
-        quantity = allocation / price
+        price      = float(latest["close"].iloc[-1])
+        allocation = self.cash * 0.10 * strength
+        quantity   = allocation / price
 
         if quantity < 1:
             return
 
-        order_direction = (
-            OrderDirection.BUY
-            if direction == SignalDirection.LONG
-            else OrderDirection.SELL
-        )
+        if direction == SignalDirection.LONG:
+            if self.positions.get(symbol, 0) > 0:
+                return
+            order_direction = OrderDirection.BUY
+
+        elif direction == SignalDirection.SHORT:
+            if self.positions.get(symbol, 0) < 0:
+                return
+            order_direction = OrderDirection.SELL
+
+        else:
+            return
 
         order = OrderEvent(
             symbol     = symbol,
@@ -90,58 +76,65 @@ class Portfolio:
             direction  = order_direction,
             quantity   = round(quantity, 4),
         )
-
-        logger.debug(f"Order fired: {order}")
         self.events.put(order)
 
     def on_fill(self, event: FillEvent) -> None:
-        """
-        Receive a fill from the execution handler.
-        Update positions and cash.
-        """
         self.fill_history.append(event)
-        symbol    = event.symbol
-        quantity  = event.quantity
-        direction = event.direction
-
-        # Update position
-        current = self.positions.get(symbol, 0.0)
+        symbol      = event.symbol
+        quantity    = event.quantity
+        direction   = event.direction
+        price       = event.fill_price
+        current_qty = self.positions.get(symbol, 0.0)
 
         if direction == OrderDirection.BUY:
-            self.positions[symbol] = current + quantity
-            self.cash -= event.total_cost
-        else:
-            self.positions[symbol] = current - quantity
-            self.cash += event.fill_cost - event.commission
+            if current_qty < 0:
+                # Covering a short — just pay the cost to buy back
+                self.cash -= event.total_cost
+                new_qty    = current_qty + quantity
+            else:
+                self.cash -= event.total_cost
+                new_qty    = current_qty + quantity
+
+            if new_qty > 0:
+                old_cost = current_qty * self.avg_price.get(symbol, price)
+                new_cost = quantity * price
+                self.avg_price[symbol] = (old_cost + new_cost) / new_qty
+            else:
+                self.avg_price[symbol] = 0.0
+
+        else:  # SELL
+            if current_qty > 0:
+                self.cash += event.fill_cost - event.commission
+                new_qty    = current_qty - quantity
+            else:
+                self.cash += event.fill_cost - event.commission
+                new_qty    = current_qty - quantity
+                self.avg_price[symbol] = price
+
+        self.positions[symbol] = new_qty
 
         logger.debug(
-            f"Fill: {direction.value} {quantity} {symbol} "
-            f"@ {event.fill_price:.2f} | Cash: {self.cash:.2f}"
+            f"Fill: {direction.value} {quantity:.2f} {symbol} "
+            f"@ {price:.2f} | Position: {new_qty:.2f} | Cash: {self.cash:.2f}"
         )
 
         self._update_equity()
 
-    # ─── Position Management ──────────────────────────────────────────────────
-
     def _close_position(self, symbol: str) -> None:
-        """Fire a SELL order to close an existing long position."""
         quantity = self.positions.get(symbol, 0.0)
-        if quantity <= 0:
+        if quantity == 0:
             return
 
+        direction = OrderDirection.SELL if quantity > 0 else OrderDirection.BUY
         order = OrderEvent(
             symbol     = symbol,
             order_type = OrderType.MARKET,
-            direction  = OrderDirection.SELL,
-            quantity   = quantity,
+            direction  = direction,
+            quantity   = abs(quantity),
         )
         self.events.put(order)
 
     def _update_equity(self) -> None:
-        """
-        Snapshot the current portfolio value.
-        Called after every fill.
-        """
         market_value = 0.0
 
         for symbol, qty in self.positions.items():
@@ -150,49 +143,44 @@ class Portfolio:
             try:
                 latest = self.data.get_latest(symbol, n=1)
                 price  = float(latest["close"].iloc[-1])
-                market_value += qty * price
+
+                if qty > 0:
+                    market_value += qty * price
+                else:
+                    entry = self.avg_price.get(symbol, price)
+                    market_value += (entry - price) * abs(qty)
+
             except Exception:
                 pass
 
         total_equity = self.cash + market_value
 
-        self.equity_curve.append({
-            "timestamp"    : datetime.utcnow(),
-            "cash"         : self.cash,
-            "market_value" : market_value,
-            "total_equity" : total_equity,
-        })
-
-    # ─── Performance Metrics ──────────────────────────────────────────────────
+        if total_equity > self.initial_capital * 0.3:
+            self.equity_curve.append({
+                "timestamp"    : datetime.utcnow(),
+                "cash"         : self.cash,
+                "market_value" : market_value,
+                "total_equity" : total_equity,
+            })
 
     def compute_metrics(self) -> None:
-        """
-        Compute performance metrics after backtest completes.
-        Called automatically by the engine at the end of the run.
-        """
         if not self.equity_curve:
             logger.warning("No equity curve data to compute metrics from.")
             return
 
-        df     = pd.DataFrame(self.equity_curve)
-        equity = df["total_equity"]
-
-        # Daily returns
+        df      = pd.DataFrame(self.equity_curve)
+        equity  = df["total_equity"]
         returns = equity.pct_change().dropna()
 
-        # Core metrics
         total_return = (equity.iloc[-1] - self.initial_capital) / self.initial_capital
-        ann_return   = (1 + total_return) ** (252 / len(returns)) - 1
+        ann_return   = (1 + total_return) ** (252 / max(len(returns), 1)) - 1
         ann_vol      = returns.std() * np.sqrt(252)
         sharpe       = ann_return / ann_vol if ann_vol != 0 else 0.0
 
-        # Drawdown
         rolling_max  = equity.cummax()
         drawdown     = (equity - rolling_max) / rolling_max
         max_drawdown = drawdown.min()
-
-        # Calmar ratio
-        calmar = ann_return / abs(max_drawdown) if max_drawdown != 0 else 0.0
+        calmar       = ann_return / abs(max_drawdown) if max_drawdown != 0 else 0.0
 
         self.metrics = {
             "initial_capital" : self.initial_capital,
