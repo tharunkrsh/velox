@@ -61,6 +61,7 @@ risk = RiskManager(
 
 from signals.momentum import MomentumStrategy
 from signals.pairs import KalmanPairsStrategy
+from signals.ml_signal import MLSignalStrategy
 
 momentum = MomentumStrategy(
     data_handler = data,
@@ -76,9 +77,17 @@ pairs = KalmanPairsStrategy(
     z_score_exit   = 0.5,
 )
 
+ml = MLSignalStrategy(
+    data_handler = data,
+    symbols      = SYMBOLS,
+    lookback     = 252,
+    retrain_every= 21,
+    threshold    = 0.6,
+)
+
 engine = Engine(
     data_handler      = data,
-    strategies        = [pairs],
+    strategies        = [ml],
     portfolio         = portfolio,
     execution_handler = execution,
 )
