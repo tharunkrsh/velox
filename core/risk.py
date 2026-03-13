@@ -39,6 +39,7 @@ class RiskManager:
         Returns True if the order passes all risk checks.
         Returns False if the order should be rejected.
         """
+
         if self.trading_halted:
             logger.warning("Trading halted — max drawdown breached.")
             return False

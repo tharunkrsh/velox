@@ -1,0 +1,33 @@
+══════════════════════════════════════════════════
+  VELOX TEARSHEET — ML_SIGNAL
+  Generated: 2026-03-13 18:53
+══════════════════════════════════════════════════
+
+  RETURNS
+  Total Return                 14.59%
+  Annualised Return             2.18%
+  Best Day                       1.7%
+  Worst Day                    -1.64%
+  Positive Days                 29.6%
+
+  RISK
+  Annualised Volatility         4.12%
+  Max Drawdown                 -6.13%
+  Avg Drawdown                 -1.61%
+  VaR (95%)                    -0.41%
+  CVaR (95%)                   -0.63%
+
+  RATIOS
+  Sharpe Ratio                  0.06
+  Sortino Ratio                0.081
+  Calmar Ratio                 0.356
+
+  TRADING
+  Total Trades                   583
+  Total Commission          $4685.37
+  Win Rate                     57.24%
+  Avg Win                   $ 269.13
+  Avg Loss                  $-216.72
+  Profit Factor                1.662
+
+══════════════════════════════════════════════════

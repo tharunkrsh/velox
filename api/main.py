@@ -28,6 +28,7 @@ from data.historical import HistoricalDataHandler
 from signals.regime import RegimeDetector
 from signals.momentum import MomentumStrategy
 from signals.ml_signal import MLSignalStrategy
+from signals.pairs import KalmanPairsStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ class EquityPoint(BaseModel):
     total_equity: float
     cash:         float
     market_value: float
+    buyhold_norm: float = 100.0
 
 
 class RegimePoint(BaseModel):
@@ -128,6 +130,11 @@ def run_backtest(request: BacktestRequest):
 
     try:
         # ── Wire up components ────────────────────────────────────────────────
+        if request.strategy in ("pairs", "ml+pairs"):
+            for sym in ["PEP", "CVX"]:
+                if sym not in request.symbols:
+                    request.symbols.append(sym)
+
         data = HistoricalDataHandler(
             symbols    = request.symbols,
             start_date = request.start_date,
@@ -151,13 +158,13 @@ def run_backtest(request: BacktestRequest):
             data_handler  = data,
             symbol        = request.symbols[0],
             lookback      = 252,
-            retrain_every = 63,
+            retrain_every = 126,
         )
 
         # ── Build strategy list ───────────────────────────────────────────────
         strategy_list = [regime]
 
-        if request.strategy in ("ml", "ml+momentum"):
+        if request.strategy in ("ml", "ml+pairs"):
             ml = MLSignalStrategy(
                 data_handler    = data,
                 symbols         = request.symbols,
@@ -178,25 +185,65 @@ def run_backtest(request: BacktestRequest):
             )
             strategy_list.append(momentum)
 
+        if request.strategy in ("pairs", "ml+pairs"):
+            pairs = KalmanPairsStrategy(
+                data_handler  = data,
+                pair          = ("PEP", "CVX"),
+                z_score_entry = 2.0,
+                z_score_exit  = 0.5,
+            )
+            strategy_list.append(pairs)
+        
         # ── Run engine ────────────────────────────────────────────────────────
         engine = Engine(
             data_handler      = data,
             strategies        = strategy_list,
             portfolio         = portfolio,
             execution_handler = execution,
+            risk_manager      = risk,
         )
 
         engine.run()
 
+        # ── Deduplicate equity curve (one point per date) ─────────────────────
+        seen = {}
+        for e in portfolio.equity_curve:
+            date_key = e["timestamp"].strftime("%Y-%m-%d") if hasattr(e["timestamp"], "strftime") else str(e["timestamp"])[:10]
+            seen[date_key] = e
+        deduped_equity = list(seen.values())
+
         # ── Format equity curve ───────────────────────────────────────────────
+        from pathlib import Path
+        from data.cache import load_from_cache
+
+# Equal-weighted buy and hold across all symbols
+        bh_series = {}
+        for sym in request.symbols:
+            df = load_from_cache(sym, request.start_date, request.end_date, Path(".cache/data"))
+            if df is not None and "close" in df.columns:
+                close = df["close"]
+                bh_series[sym] = close / float(close.iloc[0])  # normalise each to 1.0
+
+        if bh_series:
+            import pandas as pd
+            bh_combined = pd.DataFrame(bh_series).mean(axis=1)  # equal weight average
+            bh_map = {str(d.date()): round(float(v) * 100, 2)
+                      for d, v in bh_combined.items()}
+        else:
+            bh_map = {}
+
         equity_curve = [
             EquityPoint(
                 timestamp    = e["timestamp"].isoformat() if hasattr(e["timestamp"], "isoformat") else str(e["timestamp"]),
                 total_equity = round(e["total_equity"], 2),
                 cash         = round(e["cash"], 2),
                 market_value = round(e["market_value"], 2),
+                buyhold_norm = bh_map.get(
+                    e["timestamp"].strftime("%Y-%m-%d") if hasattr(e["timestamp"], "strftime") else str(e["timestamp"])[:10],
+                    100.0
+                ),
             )
-            for e in portfolio.equity_curve
+            for e in deduped_equity
         ]
 
         # ── Format regime history ─────────────────────────────────────────────
@@ -224,5 +271,4 @@ def run_backtest(request: BacktestRequest):
     except Exception as e:
         logger.error(f"Backtest failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-    
     

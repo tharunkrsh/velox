@@ -40,11 +40,15 @@ class Engine:
         strategies: List,
         portfolio,
         execution_handler,
+        risk_manager=None,
     ):
+
         self.data = data_handler
         self.strategies = strategies
         self.portfolio = portfolio
         self.execution = execution_handler
+        self.risk = risk_manager
+
 
         # The central event queue — every component reads/writes here
         self.events: queue.Queue = queue.Queue()
@@ -126,8 +130,21 @@ class Engine:
                 self.portfolio.on_signal(event)
 
             case EventType.ORDER:
-                # Portfolio wants to trade — execution fills it
+
+                # If we have a risk manager, validate the order
+                if self.risk is not None:
+                    approved = self.risk.validate(event)
+
+                    if not approved:
+                        logger.info(
+                            f"Order rejected by risk manager: "
+                            f"{event.direction.value} {event.quantity} {event.symbol}"
+                        )
+                        return
+
+                # Order passed risk checks
                 self.execution.on_order(event)
+
 
             case EventType.FILL:
                 # Order filled — portfolio updates positions and cash

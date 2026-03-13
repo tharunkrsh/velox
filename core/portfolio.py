@@ -40,7 +40,8 @@ class Portfolio:
     def on_signal(self, event: SignalEvent) -> None:
         symbol    = event.symbol
         direction = event.direction
-        strength  = event.strength
+        strength = max(0.0, min(float(event.strength), 1.0))
+
 
         if direction == SignalDirection.EXIT:
             self._close_position(symbol)

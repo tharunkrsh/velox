@@ -57,10 +57,21 @@ export default function App() {
     }
   }
 
-  const equityData = results?.equity_curve?.map((p, i) => ({
-    date:   p.timestamp.slice(0, 10),
-    equity: parseFloat((p.total_equity / (results.equity_curve[0]?.total_equity || 1) * 100).toFixed(2)),
-  })) || []
+const equityData = (() => {
+    if (!results?.equity_curve) return []
+    let peak = -Infinity
+    return results.equity_curve.map((p) => {
+      const eq = parseFloat((p.total_equity / (results.equity_curve[0]?.total_equity || 1) * 100).toFixed(2))
+      if (eq > peak) peak = eq
+      const drawdown = parseFloat(((eq - peak) / peak * 100).toFixed(2))
+      return {
+        date:     p.timestamp.slice(0, 10),
+        equity:   eq,
+        buyhold:  p.buyhold_norm,
+        drawdown: drawdown,
+      }
+    })
+  })()
 
   const regimeData = results?.regime_history?.map(r => ({
     date:      r.timestamp.slice(0, 10),
@@ -78,7 +89,12 @@ export default function App() {
       fontFamily: "'SF Mono', 'Fira Code', monospace",
       padding:    "32px",
     }}>
-
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+          `}</style>
+          
       {/* Header */}
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 32, fontWeight: 700, letterSpacing: 4, color: "#00ff88", margin: 0 }}>
@@ -138,7 +154,7 @@ export default function App() {
             >
               <option value="ml">LightGBM ML</option>
               <option value="momentum">Momentum</option>
-              <option value="ml+momentum">ML + Momentum</option>
+              <option value="pairs">Kalman Pairs</option>
             </select>
           </div>
 
@@ -184,10 +200,20 @@ export default function App() {
         </button>
 
         {loading && (
-          <p style={{ color: "#555", fontSize: 11, marginTop: 12 }}>
-            Training ML models and running simulation — this takes ~60 seconds...
-          </p>
-        )}
+  <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+    <div style={{
+      width: 16, height: 16, borderRadius: "50%",
+      border: "2px solid #1e1e2e",
+      borderTopColor: "#00ff88",
+      animation: "spin 0.8s linear infinite",
+    }} />
+    <p style={{ color: "#555", fontSize: 11, margin: 0 }}>
+            {params.strategy === "ml" || params.strategy === "ml+pairs"
+        ? "Training ML models and running simulation — this takes ~60 seconds..."
+        : "Running simulation — this takes ~20 seconds..."}
+    </p>
+  </div>
+)}
 
         {error && (
           <p style={{ color: "#ff4444", fontSize: 11, marginTop: 12 }}>
@@ -243,9 +269,34 @@ export default function App() {
                   contentStyle={{ background: "#0f0f1a", border: "1px solid #1e1e2e", fontSize: 11 }}
                   labelStyle={{ color: "#888" }}
                 />
-                <Line type="monotone" dataKey="equity" stroke="#00ff88"
-                  dot={false} strokeWidth={2} name="VELOX" />
+                <Line type="monotone" dataKey="equity"  stroke="#00ff88" dot={false} strokeWidth={2} name="VELOX" />
+                <Line type="monotone" dataKey="buyhold" stroke="#4488ff" dot={false} strokeWidth={1.5} strokeDasharray="4 4" name="Buy & Hold" /> 
               </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Drawdown */}
+          <div style={{
+            background: "#0f0f1a", border: "1px solid #1e1e2e",
+            borderRadius: 8, padding: 24, marginBottom: 16,
+          }}>
+            <p style={{ color: "#555", fontSize: 11, letterSpacing: 2, marginBottom: 16 }}>
+              DRAWDOWN
+            </p>
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={equityData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e1e2e" />
+                <XAxis dataKey="date" stroke="#333" tick={{ fontSize: 10 }}
+                  tickFormatter={d => d.slice(0, 7)}
+                  interval={Math.floor(equityData.length / 8)} />
+                <YAxis stroke="#333" tick={{ fontSize: 10 }} />
+                <Tooltip
+                  contentStyle={{ background: "#0f0f1a", border: "1px solid #1e1e2e", fontSize: 11 }}
+                  labelStyle={{ color: "#888" }}
+                />
+                <Area type="monotone" dataKey="drawdown" stroke="#ff4444"
+                  fill="rgba(255,68,68,0.15)" dot={false} name="Drawdown" />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
 

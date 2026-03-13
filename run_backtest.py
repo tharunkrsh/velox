@@ -29,7 +29,7 @@ logging.basicConfig(
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-SYMBOLS = ["AAPL", "MSFT", "GOOGL", "PEP", "CVX"]
+SYMBOLS = ["AAPL", "MSFT", "GOOGL", "NVDA", "META", "AMZN", "JPM", "PEP", "CVX"]
 START_DATE  = "2020-01-01"
 END_DATE    = "2023-12-31"
 CAPITAL     = 100_000.0
@@ -96,6 +96,7 @@ engine = Engine(
     strategies        = [regime, ml],
     portfolio         = portfolio,
     execution_handler = execution,
+    risk_manager      = risk,
 )
 
 if __name__ == "__main__":
