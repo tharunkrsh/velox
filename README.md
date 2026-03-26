@@ -17,6 +17,12 @@ VELOX is a full-stack algorithmic trading research platform built from scratch. 
 
 <img width="2816" height="1536" alt="Gemini_Generated_Image_qxjia8qxjia8qxji" src="https://github.com/user-attachments/assets/37618ed0-c138-499f-ba35-2b60f0246319" />
 
+## How it works
+
+<img width="956" height="464" alt="dashboard" src="https://github.com/user-attachments/assets/16a451a7-a45e-41be-b0bb-a9d03649a19a" />
+<img width="947" height="462" alt="results1" src="https://github.com/user-attachments/assets/11636e16-0738-427c-9cdf-b91558cea70c" />
+<img width="947" height="452" alt="results2" src="https://github.com/user-attachments/assets/fb3c4c3a-ae3a-440a-a439-ba2c5fefe2ff" />
+
 ### Engine Design
 
 VELOX uses a two-level event loop identical to production trading systems:
@@ -45,7 +51,7 @@ A gradient-boosted classifier trained on rolling windows with strict temporal se
 The model is retrained every 21 bars (monthly) on the most recent 252 bars of data. Signals are only fired when predicted probability exceeds a configurable threshold (default 0.6).
 
 ### 3. Time-Series Momentum (`signals/momentum.py`)
-Jegadeesh & Titman (1993) cross-sectional momentum with a 20-bar lookback and 2% threshold. Regime-gated ; no trades in bear markets.
+Jegadeesh & Titman (1993) cross-sectional momentum with a 40-bar lookback and 2% threshold. Regime-gated ; no trades in bear markets.
 
 ### 4. Kalman Filter Pairs Trading (`signals/pairs.py`)
 Market-neutral statistical arbitrage on the PEP/CVX pair (Engle-Granger cointegration p=0.0114). The Kalman filter dynamically estimates the hedge ratio as a latent variable that evolves as a random walk.
