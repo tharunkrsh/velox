@@ -2,7 +2,6 @@
 ### Algorithmic Trading Research Framework
 
 > Backtesting engine with HMM regime detection, walk-forward ML signals, and Kalman filter pairs trading, served via FastAPI with a React dashboard.
-
 ![Python](https://img.shields.io/badge/Python-3.13-00ff88?style=flat-square&logo=python&logoColor=white&labelColor=0a0a0f)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-00ff88?style=flat-square&logo=fastapi&logoColor=white&labelColor=0a0a0f)
 ![React](https://img.shields.io/badge/React-18-00ff88?style=flat-square&logo=react&logoColor=white&labelColor=0a0a0f)
@@ -19,8 +18,12 @@ VELOX is a full-stack algorithmic trading research platform built from scratch. 
 
 ## How it works
 
+
+React dashboard: choose your strategy, timeframe, and tickers. Then adjust commission, slippage and starting capital as you wish.
 <img width="956" height="464" alt="dashboard" src="https://github.com/user-attachments/assets/16a451a7-a45e-41be-b0bb-a9d03649a19a" />
+Velox will show you your strategy performance vs. buy-and-hold total return.
 <img width="947" height="462" alt="results1" src="https://github.com/user-attachments/assets/11636e16-0738-427c-9cdf-b91558cea70c" />
+Extra information includes Sharpe ratio, max drawdown, total trades, annual return, annual volatility, Calmar ratio, final equity, a drawdown chart, and a market regime probability chart.
 <img width="947" height="452" alt="results2" src="https://github.com/user-attachments/assets/fb3c4c3a-ae3a-440a-a439-ba2c5fefe2ff" />
 
 ### Engine Design
