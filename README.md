@@ -15,43 +15,7 @@ VELOX is a full-stack algorithmic trading research platform built from scratch. 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    React Dashboard                      │
-│         (Vite + Recharts ; localhost:5173)              │
-└───────────────────────┬─────────────────────────────────┘
-                        │ HTTP (axios)
-                        ▼
-┌─────────────────────────────────────────────────────────┐
-│                   FastAPI Backend                       │
-│              (Uvicorn ; localhost:8000)                 │
-│   POST /backtest   GET /strategies   GET /health        │
-└───────────────────────┬─────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────┐
-│                   VELOX Engine                          │
-│                                                         │
-│  ┌─────────────┐   ┌──────────────┐   ┌─────────────┐   │
-│  │ Data Handler│   │  Event Queue │   │  Portfolio  │   │
-│  │  (yfinance  │──▶│              │──▶│  Manager   │   │
-│  │  + Parquet  │   │ MarketEvent  │   │             │   │
-│  │   cache)    │   │ SignalEvent  │   │ Position    │   │
-│  └─────────────┘   │ OrderEvent   │   │ Sizing      │   │
-│                    │ FillEvent    │   │ P&L Track   │   │ 
-│  ┌─────────────┐   └──────┬───────┘   └─────────────┘   │
-│  │  Strategies │          │                             │
-│  │             |◀────────┘                             |
-│  │ HMM Regime  │                                        │
-│  │ LightGBM ML │   ┌──────────────┐                     │
-│  │ Momentum    │   │  Execution   │                     │
-│  │ Kalman Pairs│   │  Handler     │                     │
-│  └─────────────┘   │ (slippage +  │                     │
-│                    │  commission) │                     │
-│                    └──────────────┘                     │
-└─────────────────────────────────────────────────────────┘
-```
-
+<img width="2816" height="1536" alt="Gemini_Generated_Image_qxjia8qxjia8qxji" src="https://github.com/user-attachments/assets/37618ed0-c138-499f-ba35-2b60f0246319" />
 
 ### Engine Design
 
