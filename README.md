@@ -16,7 +16,7 @@ VELOX is a full-stack algorithmic trading research platform built from scratch. 
 
 <img width="2816" height="1536" alt="Gemini_Generated_Image_qxjia8qxjia8qxji" src="https://github.com/user-attachments/assets/37618ed0-c138-499f-ba35-2b60f0246319" />
 
-## How it works
+## How it looks
 
 React dashboard: choose your strategy, timeframe, and tickers, then adjust commission, slippage, and starting capital.
 
@@ -30,7 +30,7 @@ The results dashboard shows total return, Sharpe ratio, max drawdown, total trad
 
 <img width="947" height="452" alt="results2" src="https://github.com/user-attachments/assets/fb3c4c3a-ae3a-440a-a439-ba2c5fefe2ff" />
 
-### Engine Design
+### How it works: Engine Design
 
 VELOX uses a two-level event loop identical to production trading systems:
 
