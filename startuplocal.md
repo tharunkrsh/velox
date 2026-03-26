@@ -1,6 +1,6 @@
 ## HOW TO LAUNCH ON LOCAL PC
 
-From repo root:
+From repo root:  
 Terminal 1 (API):
 1. uv run uvicorn api.main:app --reload --port 8000  
 Terminal 2 (Dashboard):
