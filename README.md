@@ -236,13 +236,13 @@ curl -X POST http://localhost:8000/backtest \
 
 ## Design Decisions
 
-**Why a bar-by-bar event loop?** Production trading systems process events asynchronously ; orders arrive out of order, fills are uncertain, and risk checks must happen in real time. Building VELOX with the same architecture means the backtesting logic is directly portable to live trading.
+**Why a bar-by-bar event loop?** Production trading systems process events asynchronously ; orders arrive out of order, fills are uncertain, and risk checks must happen in real time. Building VELOX with the same architecture means the backtesting logic is directly comparable to live trading.
 
-**Why walk-forward ML?** Training on all available data and testing on the same data is the most common mistake in quant research. Walk-forward validation enforces strict temporal separation ; the model never sees future data during training, making the backtest results honest.
+**Why walk-forward ML?** I designed the walk-forward ML algorithm to avoid a common quant research mistake: evaluating strategies on the same data used to develop them, which can inflate performance through overfitting.. Walk-forward validation enforces strict temporal separation ; the model never sees future data during training, making the backtest results honest.
 
-**Why Kalman filter for pairs?** Static OLS hedge ratios assume the relationship between two assets is fixed. In reality it drifts ; regime changes, earnings surprises, and macro shifts all affect the cointegration relationship. The Kalman filter treats the hedge ratio as a latent state that evolves over time, updating optimally on each new observation.
+**Why Kalman filter for pairs?** Static OLS hedge ratios assume the relationship between two assets is fixed. In reality it drifts ; regime changes, current events and macro shifts all affect the cointegration relationship. The Kalman filter treats the hedge ratio as a latent state that evolves over time, updating optimally on each new observation.
 
-**Why HMM for regimes?** Markets exhibit distinct statistical properties in different regimes ; volatility, autocorrelation, and return distributions all change. The HMM learns these latent states from return data alone, without requiring labelled training data. The Viterbi algorithm then assigns the most likely regime sequence given the observed returns.
+**Why HMM for regimes?** Markets exhibit distinct statistical properties in different regimes ; volatility, autocorrelation, and return distributions all change. The HMM learns these latent states from return data alone, without requiring labelled training data. The Viterbi algorithm then assigns the most likely regime sequence given the observed returns. This allows for maximum returns by using each strategy during its optimal regime.
 
 ## Known Limitations
 
