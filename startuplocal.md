@@ -1,4 +1,4 @@
-# HOW TO LAUNCH ON LOCAL PC
+## HOW TO LAUNCH ON LOCAL PC
 
 From repo root:
 
