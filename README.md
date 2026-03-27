@@ -2,7 +2,6 @@
 ### Algorithmic Trading Research Framework
 
 > Backtesting engine with HMM regime detection, walk-forward ML signals, and Kalman filter pairs trading, served via FastAPI with a React dashboard.
-
 ![Python](https://img.shields.io/badge/Python-3.13-00ff88?style=flat-square&logo=python&logoColor=white&labelColor=0a0a0f)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-00ff88?style=flat-square&logo=fastapi&logoColor=white&labelColor=0a0a0f)
 ![React](https://img.shields.io/badge/React-18-00ff88?style=flat-square&logo=react&logoColor=white&labelColor=0a0a0f)
@@ -15,44 +14,23 @@ VELOX is a full-stack algorithmic trading research platform built from scratch. 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    React Dashboard                       │
-│         (Vite + Recharts ; localhost:5173)               │
-└───────────────────────┬─────────────────────────────────┘
-                        │ HTTP (axios)
-                        ▼
-┌─────────────────────────────────────────────────────────┐
-│                   FastAPI Backend                        │
-│              (Uvicorn ; localhost:8000)                  │
-│   POST /backtest   GET /strategies   GET /health        │
-└───────────────────────┬─────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────┐
-│                   VELOX Engine                           │
-│                                                          │
-│  ┌─────────────┐   ┌──────────────┐   ┌─────────────┐  │
-│  │ Data Handler│   │  Event Queue │   │  Portfolio  │  │
-│  │  (yfinance  │──▶│              │──▶│  Manager    │  │
-│  │  + Parquet  │   │ MarketEvent  │   │             │  │
-│  │   cache)    │   │ SignalEvent  │   │ Position    │  │
-│  └─────────────┘   │ OrderEvent   │   │ Sizing      │  │
-│                    │ FillEvent    │   │ P&L Track   │  │
-│  ┌─────────────┐   └──────┬───────┘   └─────────────┘  │
-│  │  Strategies │          │                             │
-│  │             │◀─────────┘                             │
-│  │ HMM Regime  │                                        │
-│  │ LightGBM ML │   ┌──────────────┐                     │
-│  │ Momentum    │   │  Execution   │                     │
-│  │ Kalman Pairs│   │  Handler     │                     │
-│  └─────────────┘   │ (slippage +  │                     │
-│                    │  commission) │                     │
-│                    └──────────────┘                     │
-└─────────────────────────────────────────────────────────┘
-```
+<img width="2816" height="1536" alt="Gemini_Generated_Image_qxjia8qxjia8qxji" src="https://github.com/user-attachments/assets/37618ed0-c138-499f-ba35-2b60f0246319" />
 
-### Engine Design
+## How it looks
+
+React dashboard: choose your strategy, timeframe, and tickers, then adjust commission, slippage, and starting capital.
+
+<img width="956" height="464" alt="dashboard" src="https://github.com/user-attachments/assets/16a451a7-a45e-41be-b0bb-a9d03649a19a" />
+
+Velox then shows your strategy performance against a buy-and-hold benchmark.
+
+<img width="947" height="462" alt="results1" src="https://github.com/user-attachments/assets/11636e16-0738-427c-9cdf-b91558cea70c" />
+
+The results dashboard shows total return, Sharpe ratio, max drawdown, total trades, annual return, annual volatility, Calmar ratio, final equity, a drawdown chart, and a market regime probability chart.
+
+<img width="947" height="452" alt="results2" src="https://github.com/user-attachments/assets/fb3c4c3a-ae3a-440a-a439-ba2c5fefe2ff" />
+
+### How it works: Engine Design
 
 VELOX uses a two-level event loop identical to production trading systems:
 
@@ -80,7 +58,11 @@ A gradient-boosted classifier trained on rolling windows with strict temporal se
 The model is retrained every 21 bars (monthly) on the most recent 252 bars of data. Signals are only fired when predicted probability exceeds a configurable threshold (default 0.6).
 
 ### 3. Time-Series Momentum (`signals/momentum.py`)
+<<<<<<< HEAD
 Jegadeesh & Titman (1993) cross-sectional momentum with a 40-bar lookback and hysteresis thresholds (enter at +4%, exit at -2%). Regime-gated ; no trades in bear markets.
+=======
+Jegadeesh & Titman (1993) cross-sectional momentum with a 40-bar lookback and 2% threshold. Regime-gated ; no trades in bear markets.
+>>>>>>> 84bb829759d37b855dd85c9ab549dcedcfef8c10
 
 ### 4. Kalman Filter Pairs Trading (`signals/pairs.py`)
 Market-neutral statistical arbitrage on the PEP/CVX pair (Engle-Granger cointegration p=0.0114). The Kalman filter dynamically estimates the hedge ratio as a latent variable that evolves as a random walk.
@@ -235,13 +217,13 @@ curl -X POST http://localhost:8000/backtest \
 
 ## Design Decisions
 
-**Why a bar-by-bar event loop?** Production trading systems process events asynchronously ; orders arrive out of order, fills are uncertain, and risk checks must happen in real time. Building VELOX with the same architecture means the backtesting logic is directly portable to live trading.
+**Why a bar-by-bar event loop?** Production trading systems process events asynchronously ; orders arrive out of order, fills are uncertain, and risk checks must happen in real time. Building VELOX with the same architecture means the backtesting logic is directly comparable to live trading.
 
-**Why walk-forward ML?** Training on all available data and testing on the same data is the most common mistake in quant research. Walk-forward validation enforces strict temporal separation ; the model never sees future data during training, making the backtest results honest.
+**Why walk-forward ML?** I designed the walk-forward ML algorithm to avoid a common quant research mistake: evaluating strategies on the same data used to develop them, which can inflate performance through overfitting.. Walk-forward validation enforces strict temporal separation ; the model never sees future data during training, making the backtest results honest.
 
-**Why Kalman filter for pairs?** Static OLS hedge ratios assume the relationship between two assets is fixed. In reality it drifts ; regime changes, earnings surprises, and macro shifts all affect the cointegration relationship. The Kalman filter treats the hedge ratio as a latent state that evolves over time, updating optimally on each new observation.
+**Why Kalman filter for pairs?** Static OLS hedge ratios assume the relationship between two assets is fixed. In reality it drifts ; regime changes, current events and macro shifts all affect the cointegration relationship. The Kalman filter treats the hedge ratio as a latent state that evolves over time, updating optimally on each new observation.
 
-**Why HMM for regimes?** Markets exhibit distinct statistical properties in different regimes ; volatility, autocorrelation, and return distributions all change. The HMM learns these latent states from return data alone, without requiring labelled training data. The Viterbi algorithm then assigns the most likely regime sequence given the observed returns.
+**Why HMM for regimes?** Markets exhibit distinct statistical properties in different regimes ; volatility, autocorrelation, and return distributions all change. The HMM learns these latent states from return data alone, without requiring labelled training data. The Viterbi algorithm then assigns the most likely regime sequence given the observed returns. This allows for maximum returns by using each strategy during its optimal regime.
 
 ## Known Limitations
 
