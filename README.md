@@ -80,7 +80,7 @@ A gradient-boosted classifier trained on rolling windows with strict temporal se
 The model is retrained every 21 bars (monthly) on the most recent 252 bars of data. Signals are only fired when predicted probability exceeds a configurable threshold (default 0.6).
 
 ### 3. Time-Series Momentum (`signals/momentum.py`)
-Jegadeesh & Titman (1993) cross-sectional momentum with a 20-bar lookback and 2% threshold. Regime-gated ; no trades in bear markets.
+Jegadeesh & Titman (1993) cross-sectional momentum with a 40-bar lookback and hysteresis thresholds (enter at +4%, exit at -2%). Regime-gated ; no trades in bear markets.
 
 ### 4. Kalman Filter Pairs Trading (`signals/pairs.py`)
 Market-neutral statistical arbitrage on the PEP/CVX pair (Engle-Granger cointegration p=0.0114). The Kalman filter dynamically estimates the hedge ratio as a latent variable that evolves as a random walk.

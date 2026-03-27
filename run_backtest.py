@@ -78,7 +78,10 @@ momentum = MomentumStrategy(
     data_handler = data,
     symbols      = SYMBOLS,
     lookback     = 20,
-    threshold    = 0.02,
+    enter_threshold = 0.03,
+    exit_threshold  = -0.01,
+    min_hold_bars   = 5,
+    rebalance_every = 5,
     regime_detector = regime,
 )
 

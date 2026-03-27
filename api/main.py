@@ -60,6 +60,11 @@ class BacktestRequest(BaseModel):
     ml_threshold:   float      = Field(default=0.6)
     slippage_pct:   float      = Field(default=0.001)
     commission_pct: float      = Field(default=0.001)
+    momentum_lookback: int     = Field(default=20)
+    momentum_enter_threshold: float = Field(default=0.03)
+    momentum_exit_threshold: float  = Field(default=-0.01)
+    momentum_min_hold_bars: int     = Field(default=5)
+    momentum_rebalance_every: int   = Field(default=5)
 
 
 class EquityPoint(BaseModel):
@@ -179,8 +184,11 @@ def run_backtest(request: BacktestRequest):
             momentum = MomentumStrategy(
                 data_handler    = data,
                 symbols         = request.symbols,
-                lookback        = 20,
-                threshold       = 0.02,
+                lookback        = request.momentum_lookback,
+                enter_threshold = request.momentum_enter_threshold,
+                exit_threshold  = request.momentum_exit_threshold,
+                min_hold_bars   = request.momentum_min_hold_bars,
+                rebalance_every = request.momentum_rebalance_every,
                 regime_detector = regime,
             )
             strategy_list.append(momentum)
@@ -227,7 +235,7 @@ def run_backtest(request: BacktestRequest):
         if bh_series:
             import pandas as pd
             bh_combined = pd.DataFrame(bh_series).mean(axis=1)  # equal weight average
-            bh_map = {str(d.date()): round(float(v) * 100, 2)
+            bh_map = {str(d.date()): round(float(v) * request.initial_capital, 2)
                       for d, v in bh_combined.items()}
         else:
             bh_map = {}
@@ -240,7 +248,7 @@ def run_backtest(request: BacktestRequest):
                 market_value = round(e["market_value"], 2),
                 buyhold_norm = bh_map.get(
                     e["timestamp"].strftime("%Y-%m-%d") if hasattr(e["timestamp"], "strftime") else str(e["timestamp"])[:10],
-                    100.0
+                    request.initial_capital
                 ),
             )
             for e in deduped_equity
