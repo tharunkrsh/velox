@@ -48,7 +48,7 @@ This architecture prevents lookahead bias at the structural level. No strategy c
 
 ### Data Pipeline
 
-ELOX uses a structured pipeline to ensure that market data is clean, consistent and processed without future price leakage. We
+VELOX uses a structured pipeline to ensure that market data is clean, consistent and processed without future price leakage. We
 
 1. **Data ingestion**  
    Historical OHLCV data is pulled from `yfinance` for each selected asset and standardised before use.
