@@ -46,6 +46,25 @@ VELOX uses a two-level event loop identical to production trading systems:
 
 This architecture prevents lookahead bias at the structural level. No strategy can ever see future prices.
 
+### Data Pipeline
+
+ELOX uses a structured pipeline to ensure that market data is clean, consistent and processed without future price leakage. We
+
+1. **Data ingestion**  
+   Historical OHLCV data is pulled from `yfinance` for each selected asset and standardised before use.
+
+2. **Caching and storage**  
+   Downloaded datasets are cached locally as Parquet files; this reduces repeated API calls and speeds up reruns.
+
+3. **Data validation and cleaning**  
+   The engine checks for missing values, duplicated timestamps, and alignment issues across assets before running.
+
+4. **Time alignment**  
+   Multi-asset datasets are synchronised bar by bar so signals are only generated from information available at that exact timestamp.
+
+5. **Feature engineering**  
+   The system calculates technical indicators such as volatility, momentum (RSI), and volume ratios using `pandas` and `NumPy` to feed the decision-making engine. 
+
 ## Strategies
 
 ### 1. HMM Regime Detector (`signals/regime.py`)
