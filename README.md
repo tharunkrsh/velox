@@ -10,27 +10,34 @@
 
 ## What is VELOX?
 
-VELOX is a full-stack algorithmic trading research platform built from scratch. It runs bar-by-bar backtests on historical price data, detects market regimes using a Hidden Markov Model, generates trading signals via a walk-forward LightGBM classifier, and displays results through a REST API and React dashboard.
+VELOX is a full-stack algorithmic trading research platform built from scratch. It runs bar-by-bar backtests on historical price data, detects market regimes using a Hidden Markov Model, generates trading signals via a walk-forward LightGBM classifier, and displays results through a REST API and React dashboard. Build and evaluate trading strategies using in-depth metrics that reveal exactly how your portfolio would have performed in the past.
 
 ## Architecture
 
 <img width="2816" height="1536" alt="Gemini_Generated_Image_qxjia8qxjia8qxji" src="https://github.com/user-attachments/assets/37618ed0-c138-499f-ba35-2b60f0246319" />
 
-## How it looks
-
-React dashboard: choose your strategy, timeframe, and tickers, then adjust commission, slippage, and starting capital.
+## Strategy Dashboard
+**React-based research interface**
+- Configure: Choose your strategy, timeframe, and assets.
+- Calibrate: Adjust commission, slippage, starting capital and more for realistic backtesting.
+- Analyze: Receive in-depth performance insights, from HMM regime probabilities to risk-adjusted returns.
 
 <img width="956" height="464" alt="dashboard" src="https://github.com/user-attachments/assets/16a451a7-a45e-41be-b0bb-a9d03649a19a" />
 
-Velox then shows your strategy performance against a buy-and-hold benchmark.
+**Real-Time Performance Analytics**
+Velox generates a comprehensive tearsheet comparing your strategy against a buy-and-hold benchmark, accounting for commission and slippage.
 
 <img width="947" height="462" alt="results1" src="https://github.com/user-attachments/assets/11636e16-0738-427c-9cdf-b91558cea70c" />
 
-The results dashboard shows total return, Sharpe ratio, max drawdown, total trades, annual return, annual volatility, Calmar ratio, final equity, a drawdown chart, and a market regime probability chart.
+**Results Suite** 
+The suite provides a full breakdown of risk metrics, including:
+- Risk/Reward: Sharpe Ratio, Calmar Ratio, and Max Drawdown.
+- Regime Probabilities: A dedicated chart showing the Hidden Markov Model's state classifications over the backtest period.
+- Equity Curve: High-fidelity tracking of capital allocation and strategy volatility.
 
 <img width="947" height="452" alt="results2" src="https://github.com/user-attachments/assets/fb3c4c3a-ae3a-440a-a439-ba2c5fefe2ff" />
 
-### How it works: Engine Design
+## Backend: Engine Design
 
 VELOX uses a two-level event loop identical to production trading systems:
 
