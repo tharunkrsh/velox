@@ -89,16 +89,8 @@ Jegadeesh & Titman (1993) cross-sectional momentum with a 40-bar lookback and hy
 ### 4. Kalman Filter Pairs Trading (`signals/pairs.py`)
 Market-neutral statistical arbitrage on the PEP/CVX pair (Engle-Granger cointegration p=0.0114). The Kalman filter dynamically estimates the hedge ratio as a latent variable that evolves as a random walk.
 
-**State equation:**  
-$$
-\beta_t = \beta_{t-1} + w_t
-$$
-
-**Observation equation:**  
-$$
-y_t = \beta_t x_t + v_t
-$$
-Entry at ±2σ spread divergence, exit at ±0.5σ reversion.
+**State equation:** beta_t = beta_{t-1} + w_t  
+**Observation equation:** y_t = beta_t * x_t + v_t
 
 ## Performance (ML Strategy, 2020–2023)
 
