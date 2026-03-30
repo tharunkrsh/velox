@@ -10,27 +10,34 @@
 
 ## What is VELOX?
 
-VELOX is a full-stack algorithmic trading research platform built from scratch. It runs bar-by-bar backtests on historical price data, detects market regimes using a Hidden Markov Model, generates trading signals via a walk-forward LightGBM classifier, and displays results through a REST API and React dashboard.
+VELOX is a full-stack algorithmic trading research platform built from scratch. It runs bar-by-bar backtests on historical price data, detects market regimes using a Hidden Markov Model, generates trading signals via a walk-forward LightGBM classifier, and displays results through a REST API and React dashboard. Build and evaluate trading strategies using in-depth metrics that reveal exactly how your portfolio would have performed in the past.
 
 ## Architecture
 
 <img width="2816" height="1536" alt="Gemini_Generated_Image_qxjia8qxjia8qxji" src="https://github.com/user-attachments/assets/37618ed0-c138-499f-ba35-2b60f0246319" />
 
-## How it looks
-
-React dashboard: choose your strategy, timeframe, and tickers, then adjust commission, slippage, and starting capital.
+## Strategy Dashboard
+**React-based research interface**
+- Configure: Choose your strategy, timeframe, and assets.
+- Calibrate: Adjust commission, slippage, starting capital and more for realistic backtesting.
+- Analyze: Receive in-depth performance insights, from HMM regime probabilities to risk-adjusted returns.
 
 <img width="956" height="464" alt="dashboard" src="https://github.com/user-attachments/assets/16a451a7-a45e-41be-b0bb-a9d03649a19a" />
 
-Velox then shows your strategy performance against a buy-and-hold benchmark.
+**Real-Time Performance Analytics**
+Velox generates a comprehensive tearsheet comparing your strategy against a buy-and-hold benchmark, accounting for commission and slippage.
 
 <img width="947" height="462" alt="results1" src="https://github.com/user-attachments/assets/11636e16-0738-427c-9cdf-b91558cea70c" />
 
-The results dashboard shows total return, Sharpe ratio, max drawdown, total trades, annual return, annual volatility, Calmar ratio, final equity, a drawdown chart, and a market regime probability chart.
+**Results Suite** 
+The suite provides a full breakdown of risk metrics, including:
+- Risk/Reward: Sharpe Ratio, Calmar Ratio, and Max Drawdown.
+- Regime Probabilities: A dedicated chart showing the Hidden Markov Model's state classifications over the backtest period.
+- Equity Curve: High-fidelity tracking of capital allocation and strategy volatility.
 
 <img width="947" height="452" alt="results2" src="https://github.com/user-attachments/assets/fb3c4c3a-ae3a-440a-a439-ba2c5fefe2ff" />
 
-### How it works: Engine Design
+## Backend: Engine Design
 
 VELOX uses a two-level event loop identical to production trading systems:
 
@@ -38,6 +45,25 @@ VELOX uses a two-level event loop identical to production trading systems:
 2. **Inner loop** drains the event queue; strategies consume `MarketEvent`, emit `SignalEvent`, the risk manager validates, produces an `OrderEvent`, the execution handler fills it, and the portfolio updates on `FillEvent`
 
 This architecture prevents lookahead bias at the structural level. No strategy can ever see future prices.
+
+### Data Pipeline
+
+VELOX uses a structured pipeline to ensure that market data is clean, consistent and processed without future price leakage. We
+
+1. **Data ingestion**  
+   Historical OHLCV data is pulled from `yfinance` for each selected asset and standardised before use.
+
+2. **Caching and storage**  
+   Downloaded datasets are cached locally as Parquet files; this reduces repeated API calls and speeds up reruns.
+
+3. **Data validation and cleaning**  
+   The engine checks for missing values, duplicated timestamps, and alignment issues across assets before running.
+
+4. **Time alignment**  
+   Multi-asset datasets are synchronised bar by bar so signals are only generated from information available at that exact timestamp.
+
+5. **Feature engineering**  
+   The system calculates technical indicators such as volatility, momentum (RSI), and volume ratios using `pandas` and `NumPy` to feed the decision-making engine. 
 
 ## Strategies
 
@@ -58,19 +84,13 @@ A gradient-boosted classifier trained on rolling windows with strict temporal se
 The model is retrained every 21 bars (monthly) on the most recent 252 bars of data. Signals are only fired when predicted probability exceeds a configurable threshold (default 0.6).
 
 ### 3. Time-Series Momentum (`signals/momentum.py`)
-<<<<<<< HEAD
 Jegadeesh & Titman (1993) cross-sectional momentum with a 40-bar lookback and hysteresis thresholds (enter at +4%, exit at -2%). Regime-gated ; no trades in bear markets.
-=======
-Jegadeesh & Titman (1993) cross-sectional momentum with a 40-bar lookback and 2% threshold. Regime-gated ; no trades in bear markets.
->>>>>>> 84bb829759d37b855dd85c9ab549dcedcfef8c10
 
 ### 4. Kalman Filter Pairs Trading (`signals/pairs.py`)
 Market-neutral statistical arbitrage on the PEP/CVX pair (Engle-Granger cointegration p=0.0114). The Kalman filter dynamically estimates the hedge ratio as a latent variable that evolves as a random walk.
 
-**State equation:** `β_t = β_{t-1} + w_t` (hedge ratio drifts as random walk)  
-**Observation:** `y_t = β_t · x_t + v_t` (prices observed with noise)
-
-Entry at ±2σ spread divergence, exit at ±0.5σ reversion.
+**State equation:** β<sub>t</sub> = β<sub>t-1</sub> + w<sub>t</sub>  
+**Observation equation:** y<sub>t</sub> = β<sub>t</sub> x<sub>t</sub> + v<sub>t</sub>
 
 ## Performance (ML Strategy, 2020–2023)
 
