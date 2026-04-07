@@ -13,6 +13,7 @@ in quantitative finance.
 
 import logging
 import numpy as np
+from typing import Dict
 
 from core.events import MarketEvent, SignalEvent, SignalDirection
 
@@ -31,9 +32,10 @@ class MomentumStrategy:
         min_hold_bars:   int   = 5,     # avoid immediate churn
         rebalance_every: int   = 5,     # evaluate every N bars
         trend_filter_ma: int   = 0,     # require price > MA for longs if > 0
-        vol_target:      float = 0.0,   # annualized vol target (0 disables)
+        vol_target:      float = 0.15,  # annualized vol target (0 disables); default 15%
         vol_lookback:    int   = 20,    # bars for realized vol estimate
         max_vol_scale:   float = 1.5,   # cap leverage from vol scaling
+        trail_stop_pct:  float = 0.05,  # trailing stop: exit if price drops this far from peak
         regime_detector       = None,
     ):
         self.data      = data_handler
@@ -47,24 +49,66 @@ class MomentumStrategy:
         self.vol_target = max(0.0, float(vol_target))
         self.vol_lookback = max(5, int(vol_lookback))
         self.max_vol_scale = max(0.1, float(max_vol_scale))
+        self.trail_stop_pct = max(0.0, float(trail_stop_pct))
         self.events    = None  # injected by engine
         self.regime_detector  = regime_detector
         self.bar_count = 0
-        self.entry_bar = {}
+        self.entry_bar: Dict[str, int]   = {}
+        self.peak_price: Dict[str, float] = {}  # highest price seen since entry per symbol
 
     def on_market(self, event: MarketEvent) -> None:
         """
         Called on every new bar.
-        Calculates momentum for each symbol and fires signals.
+        Trailing stops are checked every bar for responsiveness.
+        Momentum signals are evaluated on the rebalance schedule.
         """
         self.bar_count += 1
+
+        # Check trailing stops every bar (not just on rebalance) so we exit fast
+        if self.trail_stop_pct > 0 and self.entry_bar:
+            for symbol in list(self.entry_bar.keys()):
+                self._check_trail_stop(symbol)
+
         if self.bar_count % self.rebalance_every != 0:
             return
 
         for symbol in self.symbols:
             self._calculate(symbol)
 
+    def _check_trail_stop(self, symbol: str) -> None:
+        """
+        Exit immediately if price has fallen more than trail_stop_pct
+        from the highest close since we entered the position.
+        """
+        bars = self.data.get_latest(symbol, n=1)
+        if bars.empty:
+            return
+
+        current_price = float(bars["close"].astype(float).iloc[-1])
+
+        # Update running peak
+        if symbol not in self.peak_price:
+            self.peak_price[symbol] = current_price
+            return
+        self.peak_price[symbol] = max(self.peak_price[symbol], current_price)
+
+        peak = self.peak_price[symbol]
+        if current_price < peak * (1 - self.trail_stop_pct):
+            logger.debug(
+                f"Trail stop hit: {symbol} price={current_price:.2f} "
+                f"peak={peak:.2f} drawdown={1 - current_price/peak:.2%}"
+            )
+            self.events.put(SignalEvent(
+                symbol    = symbol,
+                strategy  = "momentum",
+                direction = SignalDirection.EXIT,
+                strength  = 1.0,
+            ))
+            self.entry_bar.pop(symbol, None)
+            self.peak_price.pop(symbol, None)
+
     def _calculate(self, symbol: str) -> None:
+        # Skip if trailing stop already exited this position this bar
         if self.regime_detector is not None:
             regime = self.regime_detector.get_regime()
             if regime == "bear":
@@ -87,6 +131,10 @@ class MomentumStrategy:
 
         # Determine signal direction
         if momentum > self.enter_threshold:
+            # Skip if already in this position
+            if symbol in self.entry_bar:
+                return
+
             if self.trend_filter_ma > 0:
                 trend_bars = self.data.get_latest(symbol, n=self.trend_filter_ma)
                 if len(trend_bars) < self.trend_filter_ma:
@@ -99,9 +147,12 @@ class MomentumStrategy:
             strength  = min(momentum / 0.10, 1.0)  # base 0-1 scaling
             strength *= self._vol_scale(symbol)
             strength = min(max(strength, 0.0), 1.0)
+
         elif momentum < self.exit_threshold:
-            entered_at = self.entry_bar.get(symbol)
-            if entered_at is not None and (self.bar_count - entered_at) < self.min_hold_bars:
+            if symbol not in self.entry_bar:
+                return
+            entered_at = self.entry_bar[symbol]
+            if (self.bar_count - entered_at) < self.min_hold_bars:
                 return
             direction = SignalDirection.EXIT
             strength  = 1.0
@@ -122,8 +173,10 @@ class MomentumStrategy:
 
         if direction == SignalDirection.LONG:
             self.entry_bar[symbol] = self.bar_count
+            self.peak_price[symbol] = end_price  # initialise trailing stop peak
         elif direction == SignalDirection.EXIT:
             self.entry_bar.pop(symbol, None)
+            self.peak_price.pop(symbol, None)
 
         self.events.put(signal)
 

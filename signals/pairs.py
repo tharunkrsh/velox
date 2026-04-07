@@ -22,6 +22,7 @@ Where w_t ~ N(0, Q) and v_t ~ N(0, R) are process/observation noise.
 """
 
 import logging
+from collections import deque
 import numpy as np
 from typing import Tuple
 
@@ -39,8 +40,11 @@ class KalmanPairsStrategy:
         z_score_entry: float = 2.0,
         z_score_exit:  float = 0.5,
         # Kalman filter parameters
-        delta:         float = 1e-4,   # how fast hedge ratio can change
-        vt:            float = 1e-3,   # observation noise variance
+        delta:         float = 1e-3,   # how fast hedge ratio can change (increased from 1e-4)
+        vt:            float = 1.0,    # observation noise variance in price² units (~$1 std)
+        # Rolling window for z-score normalisation
+        zscore_window: int   = 60,     # bars of spread history for mean/std
+        regime_detector      = None,
     ):
         self.data          = data_handler
         self.symbol_a      = pair[0]
@@ -48,6 +52,7 @@ class KalmanPairsStrategy:
         self.z_score_entry = z_score_entry
         self.z_score_exit  = z_score_exit
         self.events        = None
+        self.regime_detector = regime_detector
 
         # ── Kalman filter state ───────────────────────────────────────────────
         # We're estimating a 2D state: [hedge_ratio, intercept]
@@ -65,10 +70,10 @@ class KalmanPairsStrategy:
         # State covariance — our uncertainty about the state
         self.P = np.zeros((2, 2))
 
-        # Running spread statistics for z-score
-        self.spread_mean = 0.0
-        self.spread_var  = 1.0
-        self.n_obs       = 0
+        # Rolling window of spread values for z-score (fixed window avoids
+        # the shrinking-z-score problem of all-history Welford variance)
+        self.zscore_window = max(20, zscore_window)
+        self.spread_buffer = deque(maxlen=self.zscore_window)
 
         # Position state
         self.position: str = None
@@ -81,6 +86,11 @@ class KalmanPairsStrategy:
         self._calculate()
 
     def _calculate(self) -> None:
+        # Regime gate — no pairs trading in bear markets
+        if self.regime_detector is not None:
+            if self.regime_detector.get_regime() == "bear":
+                return
+
         bars_a = self.data.get_latest(self.symbol_a, n=1)
         bars_b = self.data.get_latest(self.symbol_b, n=1)
 
@@ -99,21 +109,21 @@ class KalmanPairsStrategy:
         if self.bar_count < self.warmup:
             return
 
-        # Update running spread statistics (online mean/variance)
-        self.n_obs       += 1
-        old_mean          = self.spread_mean
-        self.spread_mean += (spread - self.spread_mean) / self.n_obs
-        self.spread_var  += (spread - old_mean) * (spread - self.spread_mean)
+        # Accumulate spread in rolling window
+        self.spread_buffer.append(spread)
 
-        if self.n_obs < 2:
+        # Need enough history in window before computing z-score
+        if len(self.spread_buffer) < 20:
             return
 
-        spread_std = np.sqrt(self.spread_var / (self.n_obs - 1))
+        spread_arr = np.array(self.spread_buffer)
+        spread_mean = spread_arr.mean()
+        spread_std  = spread_arr.std(ddof=1)
 
-        if spread_std == 0:
+        if spread_std < 1e-8:
             return
 
-        z_score = (spread - self.spread_mean) / spread_std
+        z_score = (spread - spread_mean) / spread_std
 
         logger.debug(
             f"Kalman pairs {self.symbol_a}/{self.symbol_b} "
