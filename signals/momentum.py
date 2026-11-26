@@ -26,13 +26,13 @@ class MomentumStrategy:
         self,
         data_handler,
         symbols:        list,
-        lookback:       int   = 20,    # bars to look back
-        enter_threshold: float = 0.03,  # enter long only above +3%
-        exit_threshold:  float = -0.01, # exit only below -1%
-        min_hold_bars:   int   = 5,     # avoid immediate churn
+        lookback:       int   = 60,    # bars to look back
+        enter_threshold: float = 0.04,  # enter long only above +4%
+        exit_threshold:  float = -0.02, # exit only below -2%
+        min_hold_bars:   int   = 10,    # avoid immediate churn
         rebalance_every: int   = 5,     # evaluate every N bars
         trend_filter_ma: int   = 0,     # require price > MA for longs if > 0
-        vol_target:      float = 0.15,  # annualized vol target (0 disables); default 15%
+        vol_target:      float = 0.0,   # annualized vol target (0 disables); disabled — hurts in bull markets
         vol_lookback:    int   = 20,    # bars for realized vol estimate
         max_vol_scale:   float = 1.5,   # cap leverage from vol scaling
         trail_stop_pct:  float = 0.05,  # trailing stop: exit if price drops this far from peak
@@ -108,11 +108,13 @@ class MomentumStrategy:
             self.peak_price.pop(symbol, None)
 
     def _calculate(self, symbol: str) -> None:
-        # Skip if trailing stop already exited this position this bar
+        # In bear regime: allow signals but scale position size down to 40%
+        # rather than blocking entirely — avoids missing recoveries mid-bear.
+        bear_scale = 1.0
         if self.regime_detector is not None:
             regime = self.regime_detector.get_regime()
             if regime == "bear":
-                return
+                bear_scale = 0.4
 
         bars = self.data.get_latest(symbol, n=self.lookback + 1)
 
@@ -146,6 +148,7 @@ class MomentumStrategy:
             direction = SignalDirection.LONG
             strength  = min(momentum / 0.10, 1.0)  # base 0-1 scaling
             strength *= self._vol_scale(symbol)
+            strength *= bear_scale
             strength = min(max(strength, 0.0), 1.0)
 
         elif momentum < self.exit_threshold:

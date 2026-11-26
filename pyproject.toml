@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "velox"
 version = "0.1.0"
@@ -18,3 +22,7 @@ dependencies = [
     "uvicorn>=0.41.0",
     "yfinance>=1.2.0",
 ]
+
+[tool.setuptools.packages.find]
+include = ["api*", "core*", "data*", "signals*", "research*"]
+exclude = ["dashboard*", "notebooks*"]

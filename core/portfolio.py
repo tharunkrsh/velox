@@ -36,6 +36,7 @@ class Portfolio:
         self.equity_curve: List[dict]  = []
         self.fill_history: List[FillEvent] = []
         self.metrics: dict             = {}
+        self._last_total_equity: float = initial_capital  # cached for sizing
 
     def on_signal(self, event: SignalEvent) -> None:
         symbol    = event.symbol
@@ -52,7 +53,9 @@ class Portfolio:
             return
 
         price      = float(latest["close"].iloc[-1])
-        allocation = self.cash * 0.20 * strength
+        # Size off total equity (not just cash) so gains compound properly.
+        # Cap at 95% of available cash to avoid overdraft.
+        allocation = min(self._last_total_equity * 0.20 * strength, self.cash * 0.95)
         quantity   = allocation / price
 
         if quantity < 1:
@@ -156,6 +159,7 @@ class Portfolio:
         total_equity = self.cash + market_value
 
         if total_equity > self.initial_capital * 0.3:
+            self._last_total_equity = total_equity
             self.equity_curve.append({
                 "timestamp"    : timestamp or datetime.utcnow(),
                 "cash"         : self.cash,

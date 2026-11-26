@@ -60,10 +60,10 @@ class BacktestRequest(BaseModel):
     ml_threshold:   float      = Field(default=0.6)
     slippage_pct:   float      = Field(default=0.001)
     commission_pct: float      = Field(default=0.001)
-    momentum_lookback: int     = Field(default=20)
-    momentum_enter_threshold: float = Field(default=0.03)
-    momentum_exit_threshold: float  = Field(default=-0.01)
-    momentum_min_hold_bars: int     = Field(default=5)
+    momentum_lookback: int     = Field(default=60)
+    momentum_enter_threshold: float = Field(default=0.04)
+    momentum_exit_threshold: float  = Field(default=-0.02)
+    momentum_min_hold_bars: int     = Field(default=10)
     momentum_rebalance_every: int   = Field(default=5)
 
 

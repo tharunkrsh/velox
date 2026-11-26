@@ -86,11 +86,6 @@ class KalmanPairsStrategy:
         self._calculate()
 
     def _calculate(self) -> None:
-        # Regime gate — no pairs trading in bear markets
-        if self.regime_detector is not None:
-            if self.regime_detector.get_regime() == "bear":
-                return
-
         bars_a = self.data.get_latest(self.symbol_a, n=1)
         bars_b = self.data.get_latest(self.symbol_b, n=1)
 
@@ -131,9 +126,45 @@ class KalmanPairsStrategy:
             f"position={self.position}"
         )
 
-        # ── Entry logic ───────────────────────────────────────────────────────
+        # ── Exit logic (runs regardless of regime) ────────────────────────────
+        # Critical: exits must never be gated — a stuck position is a loss.
+
+        if self.position == "short_spread":
+            # Normal mean-reversion exit
+            if z_score < self.z_score_exit:
+                self._fire(self.symbol_a, SignalDirection.EXIT, 1.0)
+                self._fire(self.symbol_b, SignalDirection.EXIT, 1.0)
+                self.position = None
+                return
+            # Stop-loss: pair diverged further than expected — cut the loss
+            if z_score > self.z_score_stop:
+                logger.info(f"Pairs stop-loss hit: z={z_score:.2f}, exiting short_spread")
+                self._fire(self.symbol_a, SignalDirection.EXIT, 1.0)
+                self._fire(self.symbol_b, SignalDirection.EXIT, 1.0)
+                self.position = None
+                return
+
+        elif self.position == "long_spread":
+            if z_score > -self.z_score_exit:
+                self._fire(self.symbol_a, SignalDirection.EXIT, 1.0)
+                self._fire(self.symbol_b, SignalDirection.EXIT, 1.0)
+                self.position = None
+                return
+            if z_score < -self.z_score_stop:
+                logger.info(f"Pairs stop-loss hit: z={z_score:.2f}, exiting long_spread")
+                self._fire(self.symbol_a, SignalDirection.EXIT, 1.0)
+                self._fire(self.symbol_b, SignalDirection.EXIT, 1.0)
+                self.position = None
+                return
+
+        # ── Entry logic (gated by regime) ─────────────────────────────────────
 
         if self.position is None:
+            # Bear regime: block new entries, don't block exits (handled above)
+            if self.regime_detector is not None:
+                if self.regime_detector.get_regime() == "bear":
+                    return
+
             if z_score > self.z_score_entry:
                 self._fire(self.symbol_a, SignalDirection.SHORT, abs(z_score) / 4)
                 self._fire(self.symbol_b, SignalDirection.LONG,  abs(z_score) / 4)
@@ -143,18 +174,6 @@ class KalmanPairsStrategy:
                 self._fire(self.symbol_a, SignalDirection.LONG,  abs(z_score) / 4)
                 self._fire(self.symbol_b, SignalDirection.SHORT, abs(z_score) / 4)
                 self.position = "long_spread"
-
-        # ── Exit logic ────────────────────────────────────────────────────────
-
-        elif self.position == "short_spread" and z_score < self.z_score_exit:
-            self._fire(self.symbol_a, SignalDirection.EXIT, 1.0)
-            self._fire(self.symbol_b, SignalDirection.EXIT, 1.0)
-            self.position = None
-
-        elif self.position == "long_spread" and z_score > -self.z_score_exit:
-            self._fire(self.symbol_a, SignalDirection.EXIT, 1.0)
-            self._fire(self.symbol_b, SignalDirection.EXIT, 1.0)
-            self.position = None
 
     def _kalman_update(self, price_a: float, price_b: float) -> float:
         """

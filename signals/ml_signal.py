@@ -211,10 +211,13 @@ class MLSignalStrategy:
     # ─── Prediction ───────────────────────────────────────────────────────────
 
     def _predict(self, symbol: str) -> None:
+        # In bear regime: allow longs but at 40% size rather than blocking.
+        # EXIT signals always pass through at full size.
+        bear_scale = 1.0
         if self.regime_detector is not None:
             regime = self.regime_detector.get_regime()
             if regime == "bear":
-                return
+                bear_scale = 0.4
         if symbol not in self.models:
             return
 
@@ -232,7 +235,7 @@ class MLSignalStrategy:
                 symbol    = symbol,
                 strategy  = "ml_signal",
                 direction = SignalDirection.LONG,
-                strength  = (prob - 0.5) * 2,  # scale 0.5-1.0 → 0.0-1.0
+                strength  = (prob - 0.5) * 2 * bear_scale,  # scale 0.5-1.0 → 0.0-1.0, reduced in bear
                 metadata  = {"ml_prob": round(prob, 3)},
             )
             self.events.put(signal)
