@@ -1,0 +1,30 @@
+id: ftmo-2step
+name: FTMO Challenge 2-Step (FTMO Challenge + Verification)
+version: "2026-11"
+source_urls:
+  - https://ftmo.com/en/trading-objectives/
+  - https://ftmo.com/en/2-step-challenge/
+verified_at: 2026-11-26
+notes:
+  - "Max Loss is static: 10% of initial capital in the Challenge, Verification and FTMO Account."
+  - "Minimum trading days are counted by FTMO on days a position is OPENED; VELOX counts days
+    on which a trade CLOSED. Identical for intraday traders."
+  - "Not affiliated with FTMO. Rules modelled from public pages; always confirm on your account."
+  - "No time limit. Daily loss resets at midnight CE(S)T from the prior day's balance."
+initial_balance: 100000
+calendar: {timezone: Europe/Prague, rollover: "00:00"}
+phases:
+  - name: FTMO Challenge
+    floors:
+      - {type: daily_loss_limit, pct: 0.05}
+      - {type: static_max_loss, pct: 0.10}
+    pass_conditions:
+      - {type: profit_target, pct: 0.10}
+      - {type: min_trading_days, days: 4}
+  - name: Verification
+    floors:
+      - {type: daily_loss_limit, pct: 0.05}
+      - {type: static_max_loss, pct: 0.10}
+    pass_conditions:
+      - {type: profit_target, pct: 0.05}
+      - {type: min_trading_days, days: 4}

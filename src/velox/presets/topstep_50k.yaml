@@ -1,0 +1,28 @@
+id: topstep-50k
+name: Topstep 50K Trading Combine
+version: "2026-11"
+source_urls:
+  - https://help.topstep.com/en/articles/8284197-trading-combine-parameters
+  - https://help.topstep.com/en/articles/8284208-what-is-the-consistency-target
+  - https://help.topstep.com/en/articles/13620045-what-is-the-responsible-trading-program
+verified_at: 2026-11-26
+notes:
+  - "Daily Loss Limit ($1,000, optional at checkout) is halt-only: positions are liquidated and the
+    account is locked until the 17:00 CT rollover. It never fails the Combine. Remove the
+    daily_loss_limit floor in a custom preset if you did not add it."
+  - "Trading day = 17:00 CT rollover (Topstep's session ends 16:00 CT)."
+  - "Not affiliated with Topstep. Rules modelled from public pages; always confirm on your account."
+  - "Consistency target: required profit = max($3,000, best_day / 0.55), i.e. best day <= 55%
+    of total profit."
+  - "Max contract limits depend on instrument; set them via sizing.max_units."
+initial_balance: 50000
+calendar: {timezone: America/Chicago, rollover: "17:00"}
+phases:
+  - name: Trading Combine
+    floors:
+      - {type: daily_loss_limit, amount: 1000, effect: halt_day}
+      - {type: eod_trailing_max_loss, amount: 2000, lock_offset: 0}
+    pass_conditions:
+      - {type: profit_target, amount: 3000}
+      - {type: min_trading_days, days: 2}
+      - {type: best_day_consistency, max_share: 0.55, denominator: total_profit}

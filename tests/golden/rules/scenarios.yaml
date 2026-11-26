@@ -1,0 +1,176 @@
+# Golden rule scenarios: hand-computed expected outcomes for the reference engine.
+# Each trade is [pnl] or [pnl, adverse]; adverse defaults to max(0, -pnl) (realised).
+# Test rulesets start at 10,000; preset scenarios use the bundled preset's balance.
+
+rulesets:
+  static: &base
+    id: t-static
+    name: static 1000
+    version: test
+    source_urls: []
+    verified_at: 2026-01-01
+    initial_balance: 10000
+    calendar: {timezone: UTC, rollover: "00:00"}
+    phases:
+      - name: P1
+        floors: [{type: static_max_loss, amount: 1000}]
+        pass_conditions: [{type: profit_target, amount: 1000}]
+  static_no_touch:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: static_max_loss, amount: 1000, breach_on_touch: false}]
+        pass_conditions: [{type: profit_target, amount: 1000}]
+  daily:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: daily_loss_limit, amount: 500}, {type: static_max_loss, amount: 2000}]
+        pass_conditions: [{type: profit_target, amount: 1000}]
+  daily_realized:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: daily_loss_limit, amount: 500, includes_floating: false}]
+        pass_conditions: [{type: profit_target, amount: 1000}]
+  daily_halt:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: daily_loss_limit, amount: 500, effect: halt_day},
+                 {type: static_max_loss, amount: 2000}]
+        pass_conditions: [{type: profit_target, amount: 1000}]
+  eod_trail:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: eod_trailing_max_loss, amount: 1000, lock_offset: 0}]
+        pass_conditions: [{type: profit_target, amount: 3000}]
+  eod_nolock:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: eod_trailing_max_loss, amount: 1000, lock_offset: null}]
+        pass_conditions: [{type: profit_target, amount: 3000}]
+  intraday_trail:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: intraday_trailing_max_loss, amount: 1000, lock_offset: 100}]
+        pass_conditions: [{type: profit_target, amount: 3000}]
+  mindays:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: static_max_loss, amount: 2000}]
+        pass_conditions: [{type: profit_target, amount: 500}, {type: min_trading_days, days: 3}]
+  consistency_total:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: static_max_loss, amount: 2000}]
+        pass_conditions: [{type: profit_target, amount: 1000},
+                          {type: best_day_consistency, max_share: 0.5, denominator: total_profit}]
+  consistency_positive:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: static_max_loss, amount: 2000}]
+        pass_conditions: [{type: profit_target, amount: 1000},
+                          {type: best_day_consistency, max_share: 0.5,
+                           denominator: positive_days_profit}]
+  two_phase:
+    <<: *base
+    phases:
+      - name: P1
+        floors: [{type: static_max_loss, amount: 1000}]
+        pass_conditions: [{type: profit_target, amount: 1000}]
+      - name: P2
+        floors: [{type: static_max_loss, amount: 1000}]
+        pass_conditions: [{type: profit_target, amount: 500}]
+
+scenarios:
+  # ── static max loss ──
+  - {name: static breach exactly at limit, ruleset: static, days: [[[-600], [-400]]],
+     expect: {outcome: fail_max_loss, fail_rule: static_max_loss, days_used: 1}}
+  - {name: static one cent inside limit survives, ruleset: static, days: [[[-600], [-399.99]]],
+     expect: {outcome: incomplete, days_used: 1}}
+  - {name: static touch allowed when breach_on_touch false, ruleset: static_no_touch,
+     days: [[[-1000]]], expect: {outcome: incomplete, days_used: 1}}
+  - {name: floating loss breaches although trade closes green, ruleset: static,
+     days: [[[200, 1000]]], expect: {outcome: fail_max_loss, days_used: 1}}
+
+  # ── daily loss ──
+  - {name: daily loss measured from start-of-day balance, ruleset: daily,
+     days: [[[300]], [[-300], [-500]]],
+     expect: {outcome: fail_daily_loss, fail_rule: daily_loss_limit, days_used: 2}}
+  - {name: daily loss resets each day, ruleset: daily, days: [[[-450]], [[-450]], [[-450]]],
+     expect: {outcome: incomplete, days_used: 3}}
+  - {name: higher floor wins when daily and static both breached, ruleset: daily,
+     days: [[[-450]], [[-450]], [[-450]], [[-700]]],
+     expect: {outcome: fail_daily_loss, days_used: 4}}
+  - {name: realised-only daily limit ignores floating dip, ruleset: daily_realized,
+     days: [[[100, 600]]], expect: {outcome: incomplete, days_used: 1}}
+  - {name: halt_day liquidates at limit and skips rest of day, ruleset: daily_halt,
+     days: [[[-300], [-300], [1000]], [[1500]]],
+     expect: {outcome: passed, days_used: 2, halted_days: 1}}
+
+  # ── trailing drawdowns ──
+  - {name: eod trailing locks at initial balance then breaches, ruleset: eod_trail,
+     days: [[[600]], [[600]], [[-1200]]], expect: {outcome: fail_max_loss, days_used: 3}}
+  - {name: eod trailing lock keeps account alive, ruleset: eod_trail,
+     days: [[[600]], [[600]], [[-1100]]], expect: {outcome: incomplete, days_used: 3}}
+  - {name: eod trailing without lock breaches, ruleset: eod_nolock,
+     days: [[[600]], [[600]], [[-1100]]], expect: {outcome: fail_max_loss, days_used: 3}}
+  - {name: eod trailing ignores intraday peak, ruleset: eod_trail,
+     days: [[[900], [-900]], [[-950]]], expect: {outcome: incomplete, days_used: 2}}
+  - {name: intraday trailing follows intraday peak with lock offset, ruleset: intraday_trail,
+     days: [[[900], [-900]], [[-100]]],
+     expect: {outcome: fail_max_loss, fail_rule: intraday_trailing_max_loss, days_used: 2}}
+
+  # ── pass conditions ──
+  - {name: min trading days delays pass, ruleset: mindays, days: [[[600]], [[10]], [[10]]],
+     expect: {outcome: passed, days_used: 3, consistency_delay_days: 2}}
+  - {name: best day vs total profit delays pass, ruleset: consistency_total,
+     days: [[[1200]], [[300]], [[900]]],
+     expect: {outcome: passed, days_used: 3, consistency_delay_days: 2}}
+  - {name: best day vs positive days profit passes, ruleset: consistency_positive,
+     days: [[[800]], [[-300]], [[800]]],
+     expect: {outcome: passed, days_used: 3, consistency_delay_days: 0}}
+  - {name: same days blocked under total-profit denominator, ruleset: consistency_total,
+     days: [[[800]], [[-300]], [[800]]], expect: {outcome: incomplete, days_used: 3}}
+  - {name: stop on target skips the rest of the day, ruleset: static,
+     days: [[[1000], [-5000]]], expect: {outcome: passed, days_used: 1}}
+
+  # ── phases & horizon ──
+  - {name: two phases pass, ruleset: two_phase, days: [[[1000]], [[250]], [[250]]],
+     expect: {outcome: passed, days_used: 3, phase_pass_days: [1, 3]}}
+  - {name: fresh account in phase two then fail, ruleset: two_phase, days: [[[1000]], [[-1000]]],
+     expect: {outcome: fail_max_loss, phase_reached: 1, days_used: 2}}
+  - {name: timeout at max days, ruleset: static, max_days: 2, days: [[[1]], [[1]], [[1]], [[1]]],
+     expect: {outcome: timeout, days_used: 2}}
+
+  # ── bundled presets ──
+  - {name: topstep consistency raises effective target, preset: topstep-50k,
+     days: [[[2000]], [[1100]], [[600]]],
+     expect: {outcome: passed, days_used: 3, consistency_delay_days: 1}}
+  - {name: topstep daily loss halts but does not fail, preset: topstep-50k,
+     days: [[[-600], [-600], [5000]], [[-200]]],
+     expect: {outcome: incomplete, days_used: 2, halted_days: 1}}
+  - {name: topstep eod trailing max loss, preset: topstep-50k,
+     days: [[[900]], [[900]], [[-900]], [[-900]], [[-200]]],
+     expect: {outcome: fail_max_loss, days_used: 5}}
+  - {name: ftmo 2-step min days then verification, preset: ftmo-2step,
+     days: [[[5000]], [[5000]], [[1]], [[1]], [[2500]], [[2500]], [[1]], [[1]]],
+     expect: {outcome: passed, days_used: 8, phase_pass_days: [4, 8], consistency_delay_days: 4}}
+  - {name: ftmo 2-step daily loss on floating equity, preset: ftmo-2step,
+     days: [[[3000]], [[-1000, 5000]]], expect: {outcome: fail_daily_loss, days_used: 2}}
+  - {name: ftmo 1-step consistency rule delays pass, preset: ftmo-1step,
+     days: [[[6000]], [[4000]], [[2000]]],
+     expect: {outcome: passed, days_used: 3, consistency_delay_days: 1}}
+  # best 5,500; total 10,500 -> 52.4% (blocked); positive days 11,000 -> 50% (legacy passes)
+  - {name: ftmo 1-step consistency counts losing days, preset: ftmo-1step,
+     days: [[[5500]], [[-500]], [[5500]]], expect: {outcome: incomplete, days_used: 3}}
+  - {name: ftmo 1-step legacy best day uses positive days only, preset: ftmo-1step-bestday,
+     days: [[[5500]], [[-500]], [[5500]]],
+     expect: {outcome: passed, days_used: 3, consistency_delay_days: 0}}
