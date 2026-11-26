@@ -41,6 +41,20 @@ class DayBook:
         units_k = sizing.scale_units(self.units, k)
         return self.pnl_per_unit * units_k, self.adverse_per_unit * units_k, units_k
 
+    def haircut(self, h: float) -> DayBook:
+        """Stress test: remove a fraction ``h`` of the average edge from every trade.
+
+        Each trade loses ``h * mean_trade_pnl`` (scaled by its own size), so the mean
+        trade P&L at 1.0x becomes ``(1 - h) * mean``. Adverse excursion is kept at
+        least as deep as the new realised loss.
+        """
+        if not 0 <= h <= 1:
+            raise ValueError("haircut must be in [0, 1]")
+        mu = float(np.mean(self.pnl_per_unit * self.units))
+        pnl_pu = self.pnl_per_unit - h * max(mu, 0.0) / self.units
+        adverse_pu = np.maximum(self.adverse_per_unit, -pnl_pu)
+        return DayBook(self.days, self.offsets, self.units, pnl_pu, adverse_pu, self.intratrade)
+
     def daily_pnl(self, k: float = 1.0, sizing: SizingModel | None = None) -> np.ndarray:
         pnl, _, _ = self.scaled(k, sizing or SizingModel())
         return np.add.reduceat(pnl, self.offsets[:-1]) if self.n_trades else np.zeros(0)

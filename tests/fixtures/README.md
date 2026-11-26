@@ -15,3 +15,11 @@
 
 `mt5_positions.csv`: synthetic MT5 Positions-tab layout (not a real export).
 Trade 1002 opens before 1001 closes (one overlap).
+
+`futures_journal.csv`: synthetic but realistic MES journal (268 trades, 90 sessions, naive
+America/Chicago times, with `risk` and `mae`). Used by the simulation tests and the README demo.
+
+`mt5_positions_utf16.tsv` / `mt5_positions_comma.csv` / `tradovate_performance.csv`: broker
+export layouts with blank S/L, a totals row, space thousands separators, a hold across the
+midnight Prague rollover, Tradovate partial fills, a short trade, accounting-negative P&L and a
+hold across the 17:00 CT rollover. Regenerate with `python tests/fixtures/make_broker_fixtures.py`.

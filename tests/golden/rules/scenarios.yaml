@@ -174,3 +174,26 @@ scenarios:
   - {name: ftmo 1-step legacy best day uses positive days only, preset: ftmo-1step-bestday,
      days: [[[5500]], [[-500]], [[5500]]],
      expect: {outcome: passed, days_used: 3, consistency_delay_days: 0}}
+
+  # ── funded stage ──
+  # Topstep XFA: starts at $0; 5 winning days of $150+ -> 50% of balance; MLL fixed at $0 after
+  - {name: topstep xfa payout then MLL locked at zero, preset: topstep-50k, funded_days: 60,
+     days: [[[1600]], [[1500]], [[200]], [[200]], [[200]], [[200]], [[200]], [[-600]]],
+     expect: {outcome: passed, days_used: 2, funded_outcome: breached, funded_days_used: 6,
+              funded_fail_rule: eod_trailing_max_loss, n_payouts: 1, gross_payouts: 500.0,
+              trader_payouts: 450.0}}
+  - {name: topstep xfa no payout before five winning days, preset: topstep-50k, funded_days: 3,
+     days: [[[1600]], [[1500]], [[200]], [[200]], [[200]], [[200]]],
+     expect: {outcome: passed, funded_outcome: survived, funded_days_used: 3, n_payouts: 0}}
+  - {name: topstep xfa payout cap, preset: topstep-50k, funded_days: 5, payout_cap: 300,
+     days: [[[1600]], [[1500]], [[200]], [[200]], [[200]], [[200]], [[200]]],
+     expect: {funded_outcome: survived, n_payouts: 1, gross_payouts: 300.0, trader_payouts: 270.0}}
+  - {name: ftmo 2-step funded reward after 10 trading days, preset: ftmo-2step, funded_days: 10,
+     days: [[[5000]], [[5000]], [[1]], [[1]], [[2500]], [[2500]], [[1]], [[1]],
+            [[1000]], [[1000]], [[1000]], [[1000]], [[1000]],
+            [[1000]], [[1000]], [[1000]], [[1000]], [[1000]]],
+     expect: {outcome: passed, funded_outcome: survived, n_payouts: 1, gross_payouts: 10000.0,
+              trader_payouts: 8000.0}}
+  - {name: failed evaluation has no funded stage, preset: topstep-50k, funded_days: 60,
+     days: [[[-900]], [[-900]], [[-300]], [[5000]]],
+     expect: {outcome: fail_max_loss, funded_outcome: null, n_payouts: 0}}

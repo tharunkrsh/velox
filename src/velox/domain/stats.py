@@ -90,7 +90,7 @@ class PnlSummary(BaseModel):
     win_rate: float
     avg_win: float
     avg_loss: float
-    profit_factor: float
+    profit_factor: float | None  # None when there are no losing trades
     best: float
     worst: float
     var_95: float
@@ -109,7 +109,7 @@ def summarize(pnl: np.ndarray) -> PnlSummary:
         win_rate=win_rate(pnl),
         avg_win=float(wins.mean()) if len(wins) else 0.0,
         avg_loss=float(losses.mean()) if len(losses) else 0.0,
-        profit_factor=profit_factor(pnl),
+        profit_factor=(None if np.isinf(pf := profit_factor(pnl)) else pf),
         best=float(pnl.max()) if len(pnl) else 0.0,
         worst=float(pnl.min()) if len(pnl) else 0.0,
         var_95=var(pnl),

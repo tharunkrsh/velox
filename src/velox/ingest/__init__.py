@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Literal
 
 from velox.domain.trades import TradeLog
-from velox.ingest import mt5
-from velox.ingest.generic import ColumnMapping, read_csv
+from velox.ingest import mt5, tradovate
+from velox.ingest.generic import ColumnMapping, read_csv, read_table
 
-Format = Literal["generic", "mt5"]
+Format = Literal["generic", "mt5", "tradovate"]
+FORMATS: tuple[str, ...] = ("generic", "mt5", "tradovate")
 
 # canonical CSV: open_time, close_time, pnl [, symbol, units, risk, mae]
 CANONICAL = ColumnMapping(open_time="open_time", close_time="close_time", pnl="pnl")
@@ -20,11 +21,16 @@ def load_trades(
     fmt: Format = "generic",
     timezone: str | None = None,
     mapping: ColumnMapping | None = None,
+    commission_per_unit: float = 0.0,
 ) -> TradeLog:
+    if fmt not in FORMATS:
+        raise ValueError(f"unknown format '{fmt}' (choose from {', '.join(FORMATS)})")
+    if fmt in ("mt5", "tradovate") and timezone is None:
+        raise ValueError(f"{fmt} exports have no UTC offset; pass the export's timezone (--tz)")
     if fmt == "mt5":
-        if timezone is None:
-            raise ValueError("MT5 exports are in broker server time; pass the server timezone")
         return mt5.read(path, timezone)
+    if fmt == "tradovate":
+        return tradovate.read(path, timezone, commission_per_unit)
     m = mapping or _infer_canonical(path)
     if timezone is not None:
         m = m.model_copy(update={"timezone": timezone})
@@ -32,8 +38,6 @@ def load_trades(
 
 
 def _infer_canonical(path: str | Path) -> ColumnMapping:
-    import pandas as pd
-
-    header = [c.strip() for c in pd.read_csv(path, nrows=0).columns]
+    header = list(read_table(path).columns)
     optional = {c: c for c in ("symbol", "units", "risk", "mae") if c in header}
     return CANONICAL.model_copy(update=optional)

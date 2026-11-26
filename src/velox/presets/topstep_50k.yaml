@@ -5,7 +5,13 @@ source_urls:
   - https://help.topstep.com/en/articles/8284197-trading-combine-parameters
   - https://help.topstep.com/en/articles/8284208-what-is-the-consistency-target
   - https://help.topstep.com/en/articles/13620045-what-is-the-responsible-trading-program
+  - https://help.topstep.com/en/articles/8284215-express-funded-account-parameters
+  - https://help.topstep.com/en/articles/8284233-topstep-payout-policy
 verified_at: 2026-11-26
+needs_verification:
+  - "XFA activation fee depends on the plan purchased; modelled as 0. Pass --activation-fee."
+  - "XFA modelled on the Standard payout path (5 winning days of $150+, up to 50% of balance,
+    max $5,000). The Consistency path (3 days, best day <= 40%, up to $6,000) is not modelled."
 notes:
   - "Daily Loss Limit ($1,000, optional at checkout) is halt-only: positions are liquidated and the
     account is locked until the 17:00 CT rollover. It never fails the Combine. Remove the
@@ -14,6 +20,8 @@ notes:
   - "Not affiliated with Topstep. Rules modelled from public pages; always confirm on your account."
   - "Consistency target: required profit = max($3,000, best_day / 0.55), i.e. best day <= 55%
     of total profit."
+  - "XFA: starts at $0 balance, $2,000 EOD trailing MLL locking at $0, MLL fixed at $0 after the
+    first payout, 90% profit split."
   - "Max contract limits depend on instrument; set them via sizing.max_units."
 initial_balance: 50000
 calendar: {timezone: America/Chicago, rollover: "17:00"}
@@ -26,3 +34,16 @@ phases:
       - {type: profit_target, amount: 3000}
       - {type: min_trading_days, days: 2}
       - {type: best_day_consistency, max_share: 0.55, denominator: total_profit}
+funded:
+  name: Express Funded Account (Standard path)
+  initial_balance: 0
+  floors:
+    - {type: daily_loss_limit, amount: 1000, effect: halt_day}
+    - {type: eod_trailing_max_loss, amount: 2000, lock_offset: 0, post_payout_lock_offset: 0}
+  payout:
+    split: 0.90
+    min_winning_days: 5
+    winning_day_threshold: 150
+    max_share: 0.5
+    max_amount: 5000
+  activation_fee: 0

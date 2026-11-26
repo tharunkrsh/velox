@@ -28,6 +28,7 @@ def _days(raw):
 @pytest.mark.parametrize("sc", DOC["scenarios"], ids=lambda s: s["name"])
 def test_scenario(sc):
     spec = load_preset(sc["preset"]) if "preset" in sc else RULESETS[sc["ruleset"]]
-    r = run_path(spec, _days(sc["days"]), max_days=sc.get("max_days"))
+    r = run_path(spec, _days(sc["days"]), max_days=sc.get("max_days"),
+                 funded_days=sc.get("funded_days"), payout_cap=sc.get("payout_cap"))
     for field, expected in sc["expect"].items():
         assert getattr(r, field) == expected, f"{field}: got {getattr(r, field)!r}"

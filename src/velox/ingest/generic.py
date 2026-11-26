@@ -8,6 +8,7 @@ across daily-loss boundaries.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import numpy as np
@@ -34,10 +35,29 @@ class ColumnMapping(BaseModel):
 
 
 def _to_number(s: pd.Series) -> pd.Series:
+    """Parse money-ish text: '$1,250.00', '1 250.00', '$(25.00)' (accounting negative)."""
     if pd.api.types.is_numeric_dtype(s):
         return s.astype(float)
-    cleaned = s.astype(str).str.replace(r"[\s $€£]", "", regex=True)
-    return pd.to_numeric(cleaned.replace({"": np.nan, "nan": np.nan}), errors="raise")
+    cleaned = s.astype(str).str.replace(r"[\s\u00a0$\u20ac\u00a3,]", "", regex=True)
+    cleaned = cleaned.str.replace(r"^\((.*)\)$", r"-\1", regex=True)
+    return pd.to_numeric(cleaned.replace({"": np.nan, "nan": np.nan, "None": np.nan}),
+                         errors="raise")
+
+
+def read_table(path: str | Path) -> pd.DataFrame:
+    """Read a delimited export regardless of encoding (UTF-8/UTF-16 with BOM, as MT5
+    desktop writes) and delimiter (comma, tab or semicolon). All cells as text."""
+    raw = Path(path).read_bytes()
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        text = raw.decode("utf-16")
+    else:
+        text = raw.decode("utf-8-sig", errors="replace")
+    header = text.splitlines()[0] if text else ""
+    sep = "\t" if "\t" in header else (";" if header.count(";") > header.count(",") else ",")
+    df = pd.read_csv(io.StringIO(text), sep=sep, dtype=str, skipinitialspace=True,
+                     keep_default_na=False, na_values=[""])
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
 
 
 def _to_utc(s: pd.Series, m: ColumnMapping, name: str) -> pd.Series:
@@ -79,7 +99,5 @@ def frame_to_tradelog(raw: pd.DataFrame, m: ColumnMapping) -> TradeLog:
     return TradeLog.from_frame(df)
 
 
-def read_csv(path: str | Path, m: ColumnMapping, **read_kwargs) -> TradeLog:
-    raw = pd.read_csv(path, skipinitialspace=True, **read_kwargs)
-    raw.columns = [str(c).strip() for c in raw.columns]
-    return frame_to_tradelog(raw, m)
+def read_csv(path: str | Path, m: ColumnMapping) -> TradeLog:
+    return frame_to_tradelog(read_table(path), m)
