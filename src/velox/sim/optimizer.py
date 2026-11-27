@@ -19,15 +19,16 @@ from __future__ import annotations
 
 import numpy as np
 
-from velox.domain.rules.reference import FundedOutcome, Outcome
+from velox.domain.outcomes import FUNDED_CODE, OUTCOME_CODE, FundedOutcome, Outcome
+from velox.domain.rules.spec import FLOOR_TYPES
 from velox.report.schema import MultiplierStats, Prob, StressPoint
-from velox.sim.engine import FUNDED_OUTCOMES, OUTCOMES, RULE_TYPES, LaneResults
+from velox.sim.engine import LaneResults
 
-_PASSED = OUTCOMES.index(Outcome.PASSED)
-_DAILY = OUTCOMES.index(Outcome.FAIL_DAILY_LOSS)
-_MAX = OUTCOMES.index(Outcome.FAIL_MAX_LOSS)
-_TIMEOUT = OUTCOMES.index(Outcome.TIMEOUT)
-_BREACH = FUNDED_OUTCOMES.index(FundedOutcome.BREACHED)
+_PASSED = OUTCOME_CODE[Outcome.PASSED]
+_DAILY = OUTCOME_CODE[Outcome.FAIL_DAILY_LOSS]
+_MAX = OUTCOME_CODE[Outcome.FAIL_MAX_LOSS]
+_TIMEOUT = OUTCOME_CODE[Outcome.TIMEOUT]
+_BREACH = FUNDED_CODE[FundedOutcome.BREACHED]
 
 
 def wilson(successes: int, n: int, z: float = 1.959963984540054) -> Prob:
@@ -68,7 +69,7 @@ def multiplier_stats(res: LaneResults, m: int, *, fee: float, activation_fee: fl
     se = float(ev_l.std(ddof=1) / np.sqrt(n)) if n > 1 else 0.0
     p_pass = n_pass / n if n else 0.0
     fail_rules = {}
-    for i, name in enumerate(RULE_TYPES):
+    for i, name in enumerate(FLOOR_TYPES):
         share = float(np.mean(res.fail_rule[m] == i))
         if share > 0:
             fail_rules[name] = round(share, 6)

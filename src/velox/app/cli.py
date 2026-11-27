@@ -15,7 +15,8 @@ from typing import Annotated
 import typer
 
 from velox.domain.daybook import build_daybook
-from velox.domain.rules.reference import Outcome, PathResult, run_path
+from velox.domain.outcomes import Outcome
+from velox.domain.rules.reference import PathResult, run_path
 from velox.domain.rules.spec import RulesetSpec
 from velox.domain.sizing import IntratradeModel, SizingModel
 from velox.domain.stats import summarize

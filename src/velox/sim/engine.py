@@ -19,26 +19,27 @@ from dataclasses import dataclass
 import numpy as np
 
 from velox.domain.daybook import DayBook
-from velox.domain.rules.reference import FundedOutcome, Outcome
+from velox.domain.outcomes import (
+    FAIL_OUTCOME,
+    FUNDED_CODE,
+    FUNDED_OUTCOMES,
+    NONE,
+    OUTCOME_CODE,
+    OUTCOMES,
+    FundedOutcome,
+    Outcome,
+)
 from velox.domain.rules.spec import (
+    FLOOR_CODE,
+    FLOOR_TYPES,
     Account,
-    FailReason,
     IntradayTrailingMaxLoss,
     RulesetSpec,
 )
 from velox.domain.sizing import SizingModel
 
-OUTCOMES = [Outcome.PASSED, Outcome.FAIL_DAILY_LOSS, Outcome.FAIL_MAX_LOSS, Outcome.TIMEOUT,
-            Outcome.INCOMPLETE]
-FUNDED_OUTCOMES = [FundedOutcome.BREACHED, FundedOutcome.SURVIVED, FundedOutcome.INCOMPLETE]
-RULE_TYPES = ["static_max_loss", "eod_trailing_max_loss", "intraday_trailing_max_loss",
-              "daily_loss_limit"]
-_O = {o: i for i, o in enumerate(OUTCOMES)}
-_FO = {o: i for i, o in enumerate(FUNDED_OUTCOMES)}
-_R = {t: i for i, t in enumerate(RULE_TYPES)}
-_FAIL_CODE = {FailReason.DAILY_LOSS: _O[Outcome.FAIL_DAILY_LOSS],
-              FailReason.MAX_LOSS: _O[Outcome.FAIL_MAX_LOSS]}
-_NONE = -1
+_O, _FO, _R, _NONE = OUTCOME_CODE, FUNDED_CODE, FLOOR_CODE, NONE
+_FAIL_CODE = {reason: _O[o] for reason, o in FAIL_OUTCOME.items()}
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,26 @@ class LaneResults:
     gross_payouts: np.ndarray
     trader_payouts: np.ndarray
     eval_balances: np.ndarray | None  # (n_recorded, max_eval_days) eval EOD balance, NaN after end
+
+    def lane(self, m: int, p: int) -> dict[str, object]:
+        """Decoded result of one lane, keyed like the reference engine's ``PathResult``."""
+        def dec(table, code):
+            return None if code == _NONE else table[code]
+
+        return {
+            "outcome": OUTCOMES[self.outcome[m, p]],
+            "fail_rule": dec(FLOOR_TYPES, self.fail_rule[m, p]),
+            "phase_reached": int(self.phase_reached[m, p]),
+            "days_used": int(self.days_used[m, p]),
+            "consistency_delay_days": int(self.consistency_delay_days[m, p]),
+            "halted_days": int(self.halted_days[m, p]),
+            "funded_outcome": dec(FUNDED_OUTCOMES, self.funded_outcome[m, p]),
+            "funded_fail_rule": dec(FLOOR_TYPES, self.funded_fail_rule[m, p]),
+            "funded_days_used": int(self.funded_days_used[m, p]),
+            "n_payouts": int(self.n_payouts[m, p]),
+            "gross_payouts": float(self.gross_payouts[m, p]),
+            "trader_payouts": float(self.trader_payouts[m, p]),
+        }
 
 
 class _State:

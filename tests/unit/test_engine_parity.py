@@ -7,11 +7,12 @@ import numpy as np
 import pytest
 
 from velox.domain.daybook import DayBook
+from velox.domain.outcomes import FUNDED_OUTCOMES, OUTCOMES
 from velox.domain.rules.reference import run_path
 from velox.domain.rules.spec import RulesetSpec
 from velox.domain.sizing import IntratradeModel, SizingModel
 from velox.presets import list_presets
-from velox.sim.engine import FUNDED_OUTCOMES, OUTCOMES, RULE_TYPES, simulate
+from velox.sim.engine import simulate
 from velox.sim.resample import stationary_bootstrap
 
 
@@ -91,24 +92,9 @@ def _check(spec, book, multipliers, sizing, n_paths, max_eval_days, funded_days,
                    for d in idx[p]]
             ref = run_path(spec, seq, max_days=max_eval_days, funded_days=funded_days,
                            payout_cap=payout_cap)
-            got = {
-                "outcome": OUTCOMES[res.outcome[m, p]],
-                "fail_rule": RULE_TYPES[res.fail_rule[m, p]] if res.fail_rule[m, p] >= 0 else None,
-                "phase_reached": int(res.phase_reached[m, p]),
-                "days_used": int(res.days_used[m, p]),
-                "consistency_delay_days": int(res.consistency_delay_days[m, p]),
-                "halted_days": int(res.halted_days[m, p]),
-                "funded_outcome": (FUNDED_OUTCOMES[res.funded_outcome[m, p]]
-                                   if res.funded_outcome[m, p] >= 0 else None),
-                "funded_fail_rule": (RULE_TYPES[res.funded_fail_rule[m, p]]
-                                     if res.funded_fail_rule[m, p] >= 0 else None),
-                "funded_days_used": int(res.funded_days_used[m, p]),
-                "n_payouts": int(res.n_payouts[m, p]),
-            }
+            got = res.lane(m, p)
             want = {k2: getattr(ref, k2) for k2 in got}
-            assert got == want, f"k={k} path={p}"
-            assert res.gross_payouts[m, p] == pytest.approx(ref.gross_payouts)
-            assert res.trader_payouts[m, p] == pytest.approx(ref.trader_payouts)
+            assert got == pytest.approx(want), f"k={k} path={p}"
             row = res.eval_balances[m * n_paths + p]
             n_rec = len(ref.eod_balances)
             np.testing.assert_allclose(row[:n_rec], ref.eod_balances, err_msg=f"k={k} p={p}")

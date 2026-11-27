@@ -22,28 +22,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
-from enum import StrEnum
 
 import numpy as np
 
-from velox.domain.rules.spec import Account, FailReason, PayoutPolicy, PhaseSpec, RulesetSpec
-
-
-class Outcome(StrEnum):
-    PASSED = "passed"
-    FAIL_DAILY_LOSS = "fail_daily_loss"
-    FAIL_MAX_LOSS = "fail_max_loss"
-    TIMEOUT = "timeout"        # hit the evaluation max-days cap
-    INCOMPLETE = "incomplete"  # ran out of trade history (replay)
-
-
-class FundedOutcome(StrEnum):
-    BREACHED = "breached"      # a funded fail rule was hit
-    SURVIVED = "survived"      # reached the funded horizon intact
-    INCOMPLETE = "incomplete"  # ran out of trade history (replay)
-
-
-_FAIL = {FailReason.DAILY_LOSS: Outcome.FAIL_DAILY_LOSS, FailReason.MAX_LOSS: Outcome.FAIL_MAX_LOSS}
+from velox.domain.outcomes import FAIL_OUTCOME, FailReason, FundedOutcome, Outcome
+from velox.domain.rules.spec import Account, PayoutPolicy, PhaseSpec, RulesetSpec
 
 
 @dataclass
@@ -171,8 +154,8 @@ def run_path(
         end = _run_day(phase.floors, phase, acct, day)
         if end.fail_rule is not None:
             r.eod_balances.append(acct.balance)
-            r.outcome, r.fail_rule, r.phase_reached = _FAIL[end.fail_reason], end.fail_rule, \
-                phase_idx
+            r.outcome, r.fail_rule = FAIL_OUTCOME[end.fail_reason], end.fail_rule
+            r.phase_reached = phase_idx
             return r
         r.halted_days += end.halted
         _close_day(acct)

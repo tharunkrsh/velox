@@ -22,13 +22,13 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from velox.domain.calendar import SessionCalendar
+from velox.domain.outcomes import FailReason
 
 # ─── Account state (read by rules, mutated only by the engines) ───────────────
 
@@ -73,11 +73,6 @@ class Account:
     @property
     def trading_days_incl_today(self):
         return self.trading_days + np.asarray(self.traded_today, dtype=int)
-
-
-class FailReason(StrEnum):
-    DAILY_LOSS = "daily_loss"
-    MAX_LOSS = "max_loss"
 
 
 class _Base(BaseModel):
@@ -226,6 +221,11 @@ FloorRule = Annotated[
     StaticMaxLoss | EodTrailingMaxLoss | IntradayTrailingMaxLoss | DailyLossLimit,
     Field(discriminator="type"),
 ]
+# floor ``type`` values in union order; the vectorised engine stores fail rules as indices
+FLOOR_TYPES: tuple[str, ...] = tuple(
+    cls.model_fields["type"].default for cls in get_args(get_args(FloorRule)[0]))
+FLOOR_CODE = {t: i for i, t in enumerate(FLOOR_TYPES)}
+
 PassRule = Annotated[
     ProfitTarget | MinTradingDays | BestDayConsistency, Field(discriminator="type")
 ]

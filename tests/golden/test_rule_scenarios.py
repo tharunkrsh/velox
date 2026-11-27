@@ -18,7 +18,7 @@ from velox.domain.rules.reference import run_path
 from velox.domain.rules.spec import RulesetSpec
 from velox.domain.sizing import IntratradeModel
 from velox.presets import load_preset
-from velox.sim.engine import FUNDED_OUTCOMES, OUTCOMES, RULE_TYPES, simulate
+from velox.sim.engine import simulate
 
 DOC = yaml.safe_load((Path(__file__).parent / "rules" / "scenarios.yaml").read_text("utf-8"))
 RULESETS = {k: RulesetSpec.model_validate(v) for k, v in DOC["rulesets"].items()}
@@ -50,22 +50,6 @@ def test_scenario(sc):
 CONCLUSIVE = [sc for sc in DOC["scenarios"]
               if "incomplete" not in (sc["expect"].get("outcome"),
                                       sc["expect"].get("funded_outcome"))]
-LANE_FIELDS = {"outcome", "fail_rule", "phase_reached", "days_used", "consistency_delay_days",
-               "halted_days", "funded_outcome", "funded_fail_rule", "funded_days_used",
-               "n_payouts", "gross_payouts", "trader_payouts"}
-
-
-def _lane_value(res, field):
-    v = getattr(res, field)[0, 0]
-    if field == "outcome":
-        return str(OUTCOMES[v])
-    if field == "funded_outcome":
-        return None if v < 0 else str(FUNDED_OUTCOMES[v])
-    if field in ("fail_rule", "funded_fail_rule"):
-        return None if v < 0 else RULE_TYPES[v]
-    return float(v) if field.endswith("payouts") and field != "n_payouts" else int(v)
-
-
 @pytest.mark.parametrize("sc", CONCLUSIVE, ids=lambda s: s["name"])
 def test_scenario_vectorised(sc):
     days = _days(sc["days"])
@@ -84,8 +68,8 @@ def test_scenario_vectorised(sc):
     idx = np.minimum(np.arange(horizon), len(days))[None, :]  # history, then padding
     res = simulate(_spec(sc), book, idx, np.array([1.0]), max_eval_days=max_eval,
                    funded_days=funded, payout_cap=sc.get("payout_cap"))
-    checked = [f for f in sc["expect"] if f in LANE_FIELDS]
+    lane = res.lane(0, 0)
+    checked = [f for f in sc["expect"] if f in lane]
     assert checked
     for field in checked:
-        got = _lane_value(res, field)
-        assert got == sc["expect"][field], f"{field}: got {got!r}"
+        assert lane[field] == sc["expect"][field], f"{field}: got {lane[field]!r}"
