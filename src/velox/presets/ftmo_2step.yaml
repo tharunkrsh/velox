@@ -1,0 +1,43 @@
+id: ftmo-2step
+name: FTMO Challenge 2-Step (FTMO Challenge + Verification)
+version: "2026-11"
+source_urls:
+  - https://ftmo.com/en/trading-objectives/
+  - https://ftmo.com/en/2-step-challenge/
+  - https://ftmo.com/en/faq/what-fees-do-you-charge-and-are-they-recurrent/
+verified_at: 2026-11-26
+needs_verification:
+  - "FTMO Account reward cycle modelled as one payout per 10 trading days (~14 calendar days);
+    the exact first-reward timing was not confirmed."
+  - "Profit split modelled at the default 80% (Scaling Plan increases to 90% are not modelled)."
+notes:
+  - "Max Loss is static: 10% of initial capital in the Challenge, Verification and FTMO Account."
+  - "Minimum trading days are counted by FTMO on days a position is OPENED; VELOX counts days
+    on which a trade CLOSED. Identical for intraday traders."
+  - "Not affiliated with FTMO. Rules modelled from public pages; always confirm on your account."
+  - "2-Step challenge fee is refunded with the first reward (FTMO FAQ)."
+  - "No time limit. Daily loss resets at midnight CE(S)T from the prior day's balance."
+initial_balance: 100000
+calendar: {timezone: Europe/Prague, rollover: "00:00"}
+phases:
+  - name: FTMO Challenge
+    floors:
+      - {type: daily_loss_limit, pct: 0.05}
+      - {type: static_max_loss, pct: 0.10}
+    pass_conditions:
+      - {type: profit_target, pct: 0.10}
+      - {type: min_trading_days, days: 4}
+  - name: Verification
+    floors:
+      - {type: daily_loss_limit, pct: 0.05}
+      - {type: static_max_loss, pct: 0.10}
+    pass_conditions:
+      - {type: profit_target, pct: 0.05}
+      - {type: min_trading_days, days: 4}
+funded:
+  name: FTMO Account
+  floors:
+    - {type: daily_loss_limit, pct: 0.05}
+    - {type: static_max_loss, pct: 0.10}
+  payout: {split: 0.80, min_days_between: 10, refund_challenge_fee: true}
+  activation_fee: 0

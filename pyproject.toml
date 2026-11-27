@@ -1,20 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
 [project]
 name = "velox"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0.dev0"
+description = "Prop-firm challenge survival and position-sizing simulator"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi>=0.135.1",
-    "hmmlearn>=0.3.3",
-    "lightgbm>=4.6.0",
-    "numpy>=2.4.3",
-    "pandas>=3.0.1",
-    "pyarrow>=23.0.1",
-    "pydantic>=2.12.5",
-    "python-dotenv>=1.2.2",
-    "scikit-learn>=1.8.0",
-    "statsmodels>=0.14.6",
-    "uvicorn>=0.41.0",
-    "yfinance>=1.2.0",
+    "jinja2>=3.1",
+    "numpy>=2.2",
+    "pandas>=2.2",
+    "pydantic>=2.10",
+    "pyyaml>=6.0",
+    "typer>=0.15",
+    "tzdata>=2024.1; sys_platform == 'win32'",
 ]
+
+[project.optional-dependencies]
+regime = ["hmmlearn>=0.3.3"]
+
+[project.scripts]
+velox = "velox.app.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.8", "hmmlearn>=0.3.3"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/velox"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]

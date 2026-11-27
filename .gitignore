@@ -26,3 +26,6 @@ dashboard/dist/
 # OS
 .DS_Store
 Thumbs.db
+# Generated reports / local runs
+out/
+*.report.html

@@ -1,0 +1,37 @@
+id: ftmo-1step
+name: FTMO Challenge 1-Step (Consistency rule, orders from 2026-10-12)
+version: "2026-11"
+source_urls:
+  - https://ftmo.com/en/1-step-challenge/
+  - https://ftmo.com/en/trading-objectives/
+  - https://ftmo.com/en/blog/trading-updates/trading-update-8-oct-2026/
+verified_at: 2026-11-26
+needs_verification:
+  - "Whether the EOD trailing Max Loss stops trailing at some level is not stated; modelled as
+    never locking."
+  - "Minimum trading days for 1-Step not confirmed; none modelled."
+  - "FTMO Account floors assumed identical to the challenge (3% daily, 10% EOD trailing); reward
+    cycle modelled as one payout per 10 trading days."
+notes:
+  - "90% profit split from the first reward; the 1-Step fee is not refunded."
+  - "Not affiliated with FTMO. Rules modelled from public pages; always confirm on your account."
+  - "Consistency rule (new orders from 12 Oct 2026 09:00): best day <= 50% of total net profit
+    across all trading days, losing days included. Not a breach: the pass is delayed."
+  - "Orders created before 12 Oct 2026 use the Best Day Rule: see preset ftmo-1step-bestday."
+initial_balance: 100000
+calendar: {timezone: Europe/Prague, rollover: "00:00"}
+phases:
+  - name: FTMO Challenge
+    floors:
+      - {type: daily_loss_limit, pct: 0.03}
+      - {type: eod_trailing_max_loss, pct: 0.10, lock_offset: null}
+    pass_conditions:
+      - {type: profit_target, pct: 0.10}
+      - {type: best_day_consistency, max_share: 0.50, denominator: total_profit}
+funded:
+  name: FTMO Account
+  floors:
+    - {type: daily_loss_limit, pct: 0.03}
+    - {type: eod_trailing_max_loss, pct: 0.10, lock_offset: null}
+  payout: {split: 0.90, min_days_between: 10, refund_challenge_fee: false}
+  activation_fee: 0
