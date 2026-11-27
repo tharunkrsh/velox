@@ -2,11 +2,14 @@
 
 Runs every (multiplier, path) pair as one *lane*. The loop is time-major (over
 simulated days, then over the j-th trade of the day) and every operation is
-vectorised across lanes. Rule maths is shared with the reference engine: the
-rule methods in :mod:`velox.domain.rules.spec` accept an :class:`Account` whose
-fields are NumPy arrays, so both engines evaluate identical formulas. The
-reference engine (:mod:`velox.domain.rules.reference`) is the oracle; parity
-is enforced by ``tests/unit/test_engine_parity.py``.
+vectorised across lanes. Rule maths and the day-end lifecycle (day close, phase
+pass check, payouts) are shared with the reference engine: the methods in
+:mod:`velox.domain.rules.spec` accept an :class:`Account` whose fields are NumPy
+arrays, so both engines evaluate identical code. Only the per-trade loop is
+written twice; parity with the reference engine
+(:mod:`velox.domain.rules.reference`) is enforced by
+``tests/unit/test_engine_parity.py`` and both engines run the hand-computed
+golden scenarios.
 
 Common random numbers: every multiplier replays the same resampled day
 sequences, so differences between multipliers come from sizing alone.
@@ -233,13 +236,7 @@ def _run_day_group(floors, phase, a: Account, base, ntr, pnl_f, adv_f, live_f) -
                 done = np.asarray(phase.pass_ok(a.take(cx)), dtype=bool)
                 passed[cx[done]] = True
                 stopped[cx[done]] = True
-    # close the day (reference ``_close_day``) for lanes that did not fail
-    traded = a.traded_today & ~failed
-    a.best_closed = np.where(traded, np.maximum(a.best_closed, a.day_pnl), a.best_closed)
-    a.pos_closed = np.where(traded, a.pos_closed + np.maximum(a.day_pnl, 0.0), a.pos_closed)
-    a.trading_days = a.trading_days + traded
-    a.traded_today = np.zeros(n, dtype=bool)
-    a.eod_peak = np.where(failed, a.eod_peak, np.maximum(a.eod_peak, a.balance))
+    traded = a.close_day(keep=~failed)
     return _DayFlags(failed, halted, passed, code, rule_ix, traded)
 
 
@@ -324,14 +321,10 @@ def _simulate_block(
     days_used = np.zeros(L, dtype=np.int64)
     delay = np.zeros(L, dtype=np.int64)
     halted_days = np.zeros(L, dtype=np.int64)
-    first_target = np.full(L, _NONE)
     f_outcome = np.full(L, _NONE)
     f_fail_rule = np.full(L, _NONE)
     f_days = np.zeros(L, dtype=np.int64)
-    n_payouts = np.zeros(L, dtype=np.int64)
     gross = np.zeros(L)
-    days_since = np.zeros(L, dtype=np.int64)
-    wins_since = np.zeros(L, dtype=np.int64)
 
     rec_lanes = (np.concatenate([np.arange(m * P, (m + 1) * P) for m in record_multipliers])
                  if record_multipliers else np.zeros(0, dtype=np.int64))
@@ -360,7 +353,7 @@ def _simulate_block(
             st.put(g, loc)
         failed = today.failed
 
-        # ── end of day (stats already closed per group) ──
+        # ── end of day (accounts already closed per group) ──
         # evaluation lanes
         ev = active[open_stage < n_phases]
         days_used[ev] += 1
@@ -381,17 +374,13 @@ def _simulate_block(
             ls = ev[ev_stage == s]
             if not len(ls):
                 continue
-            phase = ruleset.phases[s]
             a = st.take(ls)
-            tm = np.asarray(phase.target_met(a), dtype=bool) & (first_target[ls] == _NONE)
-            first_target[ls[tm]] = days_used[ls[tm]]
-            ok = today.passed[ls] | np.asarray(phase.pass_ok(a), dtype=bool)
+            ok, d = ruleset.phases[s].end_day(a, days_used[ls], today.passed[ls])
+            st.target_day[ls] = a.target_day  # the only field end_day writes
+            delay[ls] += d
             pl = ls[ok]
             if not len(pl):
                 continue
-            had = first_target[pl] != _NONE
-            delay[pl[had]] += days_used[pl[had]] - first_target[pl[had]]
-            first_target[pl] = _NONE
             if s == n_phases - 1:
                 out_outcome[pl] = _O[Outcome.PASSED]
                 out_phase[pl] = s
@@ -420,26 +409,9 @@ def _simulate_block(
             f_fail_rule[br] = today.fail_rule[br]
             stage[br] = DONE
             fl = fl[~failed[fl]]
-            pol = funded.payout
-            trd = fl[today.traded[fl]]
-            days_since[trd] += 1
-            wins_since[trd] += st.day_pnl[trd] >= pol.winning_day_threshold
-            elig = fl[(days_since[fl] >= pol.min_days_between)
-                      & (wins_since[fl] >= pol.min_winning_days)]
-            if len(elig):
-                g = np.asarray(pol.gross_request(st.balance[elig] - st.initial[elig], payout_cap),
-                               dtype=float)
-                pay = (g > 0) & (g >= pol.min_amount)
-                pe, g = elig[pay], g[pay]
-                st.balance[pe] -= g
-                st.payouts[pe] += 1
-                if pol.reset_peaks_on_payout:
-                    st.eod_peak[pe] = st.balance[pe]
-                    st.equity_peak[pe] = st.balance[pe]
-                n_payouts[pe] += 1
-                gross[pe] += g
-                days_since[pe] = 0
-                wins_since[pe] = 0
+            a = st.take(fl)
+            gross[fl] += funded.payout.settle_day(a, today.traded[fl], payout_cap)
+            st.put(fl, a)
             fin = fl[f_days[fl] >= funded_days]
             f_outcome[fin] = _FO[FundedOutcome.SURVIVED]
             stage[fin] = DONE
@@ -454,7 +426,7 @@ def _simulate_block(
         phase_reached=sh(out_phase), days_used=sh(days_used),
         consistency_delay_days=sh(delay), halted_days=sh(halted_days),
         funded_outcome=sh(f_outcome), funded_fail_rule=sh(f_fail_rule),
-        funded_days_used=sh(f_days), n_payouts=sh(n_payouts), gross_payouts=sh(gross),
+        funded_days_used=sh(f_days), n_payouts=sh(st.payouts), gross_payouts=sh(gross),
         trader_payouts=sh(gross * split),
         eval_balances=None if rec is None else rec.reshape(-1, P, max_eval_days),
     )

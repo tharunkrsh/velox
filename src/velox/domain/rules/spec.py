@@ -28,7 +28,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from velox.domain.calendar import SessionCalendar
-from velox.domain.outcomes import FailReason
+from velox.domain.outcomes import NONE, FailReason
 
 # ─── Account state (read by rules, mutated only by the engines) ───────────────
 
@@ -51,6 +51,9 @@ class Account:
     best_closed: float = -np.inf   # best completed day P&L
     pos_closed: float = 0.0        # sum of positive completed days
     payouts: int = 0               # funded stage: payouts taken so far
+    days_since_payout: int = 0     # funded stage: trading days since stage start / last payout
+    wins_since_payout: int = 0     # funded stage: winning days since stage start / last payout
+    target_day: int = NONE         # evaluation: day count when the profit target was first met
 
     @classmethod
     def fresh(cls, initial: float, basis: float) -> Account:
@@ -77,6 +80,20 @@ class Account:
     def reset(self, idx: np.ndarray, initial: float) -> None:
         """Start the lanes at ``idx`` on a fresh account (new stage)."""
         self.put(idx, Account.fresh(initial, self.basis[idx]))
+
+    def close_day(self, keep=True):
+        """End-of-day bookkeeping, for lanes where ``keep`` (failed lanes are frozen).
+
+        Returns whether each kept account traded today."""
+        traded = self.traded_today & keep
+        self.best_closed = np.where(traded, np.maximum(self.best_closed, self.day_pnl),
+                                    self.best_closed)
+        self.pos_closed = np.where(traded, self.pos_closed + np.maximum(self.day_pnl, 0.0),
+                                   self.pos_closed)
+        self.trading_days = self.trading_days + traded
+        self.traded_today = np.zeros_like(self.traded_today)
+        self.eod_peak = np.where(keep, np.maximum(self.eod_peak, self.balance), self.eod_peak)
+        return traded
 
     @property
     def profit(self):
@@ -284,6 +301,15 @@ class PhaseSpec(_Base):
     def target_met(self, a):
         return self.profit_target.met(a)
 
+    def end_day(self, a: Account, day, passed_intraday=False):
+        """Day-end check after :meth:`Account.close_day`. Records the first day the profit
+        target is met in ``a.target_day`` (the only field it writes); returns (passed,
+        consistency delay in days where passed)."""
+        a.target_day = np.where(self.target_met(a) & (a.target_day == NONE), day, a.target_day)
+        passed = passed_intraday | self.pass_ok(a)
+        delay = np.where(passed & (a.target_day != NONE), day - a.target_day, 0)
+        return passed, delay
+
 
 # ─── Funded stage ─────────────────────────────────────────────────────────────
 
@@ -312,6 +338,28 @@ class PayoutPolicy(_Base):
         amount = self.max_share * np.maximum(profit, 0.0)
         limit = min(x for x in (self.max_amount, cap, np.inf) if x is not None)
         return np.minimum(amount, limit)
+
+    def settle_day(self, a: Account, traded, cap: float | None = None):
+        """Day-end payout step for a funded account, after :meth:`Account.close_day`:
+        advance the counters since the last payout and pay where eligible.
+
+        Returns the gross amount paid (0 where nothing was paid)."""
+        a.days_since_payout = a.days_since_payout + traded
+        a.wins_since_payout = a.wins_since_payout + (
+            traded & (a.day_pnl >= self.winning_day_threshold))
+        eligible = ((a.days_since_payout >= self.min_days_between)
+                    & (a.wins_since_payout >= self.min_winning_days))
+        gross = np.where(eligible, self.gross_request(a.profit, cap), 0.0)
+        gross = np.where((gross > 0) & (gross >= self.min_amount), gross, 0.0)
+        paid = gross > 0
+        a.balance = a.balance - gross
+        a.payouts = a.payouts + paid
+        a.days_since_payout = np.where(paid, 0, a.days_since_payout)
+        a.wins_since_payout = np.where(paid, 0, a.wins_since_payout)
+        if self.reset_peaks_on_payout:
+            a.eod_peak = np.where(paid, a.balance, a.eod_peak)
+            a.equity_peak = np.where(paid, a.balance, a.equity_peak)
+        return gross
 
 
 class FundedSpec(_Base):

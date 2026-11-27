@@ -16,6 +16,10 @@ the phase has ``stop_on_target``) and at the end of each day. Passing a phase
 starts the next one on a fresh account the following trading day. After the
 last evaluation phase, the optional funded stage runs for ``funded_days``
 trading days, taking payouts at day ends under its payout policy.
+
+The day-end lifecycle (``Account.close_day``, ``PhaseSpec.end_day``,
+``PayoutPolicy.settle_day``) is shared with the vectorised engine; only the
+per-trade loop below is implemented separately in each engine.
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from velox.domain.outcomes import FAIL_OUTCOME, FailReason, FundedOutcome, Outcome
-from velox.domain.rules.spec import Account, PayoutPolicy, PhaseSpec, RulesetSpec
+from velox.domain.rules.spec import Account, PhaseSpec, RulesetSpec
 
 
 @dataclass
@@ -110,26 +114,6 @@ def _run_day(floors, phase: PhaseSpec | None, acct: Account, day: DayTrades) -> 
     return _DayEnd()
 
 
-def _close_day(acct: Account) -> None:
-    if acct.traded_today:
-        acct.best_closed = max(acct.best_closed, acct.day_pnl)
-        acct.pos_closed += max(acct.day_pnl, 0.0)
-        acct.trading_days += 1
-        acct.traded_today = False
-    acct.eod_peak = max(acct.eod_peak, acct.balance)
-
-
-def _take_payout(policy: PayoutPolicy, acct: Account, cap: float | None) -> float:
-    gross = float(policy.gross_request(acct.profit, cap))
-    if gross <= 0 or gross < policy.min_amount:
-        return 0.0
-    acct.balance -= gross
-    acct.payouts += 1
-    if policy.reset_peaks_on_payout:
-        acct.eod_peak = acct.equity_peak = acct.balance
-    return gross
-
-
 def run_path(
     ruleset: RulesetSpec,
     days: Iterable[DayTrades],
@@ -146,28 +130,24 @@ def run_path(
     phase = ruleset.phases[0]
     acct = Account.fresh(basis, basis)
     r = PathResult(Outcome.INCOMPLETE, 0, 0, [], 0)
-    first_target_day: int | None = None
 
     # ── evaluation ──
     for day in it:
         r.days_used += 1
         end = _run_day(phase.floors, phase, acct, day)
         if end.fail_rule is not None:
-            r.eod_balances.append(acct.balance)
+            r.eod_balances.append(float(acct.balance))
             r.outcome, r.fail_rule = FAIL_OUTCOME[end.fail_reason], end.fail_rule
             r.phase_reached = phase_idx
             return r
         r.halted_days += end.halted
-        _close_day(acct)
-        r.eod_balances.append(acct.balance)
+        acct.close_day()
+        r.eod_balances.append(float(acct.balance))
 
-        if first_target_day is None and phase.target_met(acct):
-            first_target_day = r.days_used
-        if end.passed_intraday or phase.pass_ok(acct):
+        passed, delay = phase.end_day(acct, r.days_used, end.passed_intraday)
+        if passed:
             r.phase_pass_days.append(r.days_used)
-            if first_target_day is not None:
-                r.consistency_delay_days += r.days_used - first_target_day
-            first_target_day = None
+            r.consistency_delay_days += int(delay)
             if phase_idx == len(ruleset.phases) - 1:
                 r.outcome = Outcome.PASSED
                 break
@@ -187,26 +167,17 @@ def run_path(
     f = ruleset.funded
     acct = Account.fresh(ruleset.funded_start, basis)
     r.funded_outcome = FundedOutcome.INCOMPLETE
-    days_since = wins_since = 0
     for day in it:
         r.funded_days_used += 1
         end = _run_day(f.floors, None, acct, day)
         if end.fail_rule is not None:
             r.funded_outcome, r.funded_fail_rule = FundedOutcome.BREACHED, end.fail_rule
             break
-        traded, day_pnl = acct.traded_today, acct.day_pnl
-        _close_day(acct)
-        if traded:
-            days_since += 1
-            wins_since += int(day_pnl >= f.payout.winning_day_threshold)
-        if days_since >= f.payout.min_days_between and wins_since >= f.payout.min_winning_days:
-            gross = _take_payout(f.payout, acct, payout_cap)
-            if gross > 0:
-                r.n_payouts += 1
-                r.gross_payouts += gross
-                days_since = wins_since = 0
+        traded = acct.close_day()
+        r.gross_payouts += float(f.payout.settle_day(acct, traded, payout_cap))
         if r.funded_days_used >= funded_days:
             r.funded_outcome = FundedOutcome.SURVIVED
             break
+    r.n_payouts = int(acct.payouts)
     r.trader_payouts = r.gross_payouts * f.payout.split
     return r
