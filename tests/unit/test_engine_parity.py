@@ -81,7 +81,8 @@ def _check(spec, book, multipliers, sizing, n_paths, max_eval_days, funded_days,
     idx = stationary_bootstrap(book.n_days, n_paths, max_eval_days + funded_days,
                                block_len=3, rng=rng)
     res = simulate(spec, book, idx, multipliers, sizing=sizing, max_eval_days=max_eval_days,
-                   funded_days=funded_days, payout_cap=payout_cap)
+                   funded_days=funded_days, payout_cap=payout_cap,
+                   record_multipliers=list(range(len(multipliers))))
     lanes = 0
     for m, k in enumerate(multipliers):
         pnl, adv, units = book.scaled(k, sizing)
@@ -108,6 +109,10 @@ def _check(spec, book, multipliers, sizing, n_paths, max_eval_days, funded_days,
             assert got == want, f"k={k} path={p}"
             assert res.gross_payouts[m, p] == pytest.approx(ref.gross_payouts)
             assert res.trader_payouts[m, p] == pytest.approx(ref.trader_payouts)
+            row = res.eval_balances[m * n_paths + p]
+            n_rec = len(ref.eod_balances)
+            np.testing.assert_allclose(row[:n_rec], ref.eod_balances, err_msg=f"k={k} p={p}")
+            assert np.isnan(row[n_rec:]).all()
             lanes += 1
     return lanes, res
 
@@ -153,3 +158,18 @@ def test_parity_covers_every_outcome_class():
     assert {"breached", "survived"} <= seen_f
     assert payouts > 0
     assert halts > 0
+
+
+@pytest.mark.parametrize("seed", range(3))
+def test_chunked_simulation_matches_single_block(seed):
+    """Lanes are processed in blocks; results must not depend on the block size."""
+    rng = np.random.default_rng(2000 + seed)
+    spec = _random_ruleset(rng)
+    book = _book(rng, scale=150.0)
+    ks = np.array([0.5, 1.0, 1.5])
+    idx = stationary_bootstrap(book.n_days, 50, 40, block_len=3, rng=rng)
+    kw = dict(max_eval_days=25, funded_days=15, record_multipliers=[0, 2])
+    whole = simulate(spec, book, idx, ks, **kw)
+    chunked = simulate(spec, book, idx, ks, chunk_lanes=21, **kw)  # 7 paths per block
+    for f in whole.__dataclass_fields__:
+        np.testing.assert_array_equal(getattr(chunked, f), getattr(whole, f), err_msg=f)
