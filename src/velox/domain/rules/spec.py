@@ -21,8 +21,8 @@ Amounts are absolute (``amount``) or a fraction of the account size (``pct``).
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass
-from typing import Annotated, Literal, get_args
+from dataclasses import dataclass, fields
+from typing import Annotated, ClassVar, Literal, get_args
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -35,9 +35,8 @@ from velox.domain.outcomes import FailReason
 
 @dataclass
 class Account:
-    """Scalar account state for one path in one stage.
-
-    The vectorised engine exposes the same attribute names as arrays.
+    """Account state for one stage: scalars for one path (reference engine), or
+    one NumPy array per field across lanes (vectorised engine, see :meth:`lanes`).
     """
 
     initial: float             # stage starting balance (Topstep XFA starts at 0)
@@ -57,6 +56,28 @@ class Account:
     def fresh(cls, initial: float, basis: float) -> Account:
         return cls(initial, basis, initial, initial, initial, initial)
 
+    # ── lane form: every field is an array over lanes ──
+
+    @classmethod
+    def lanes(cls, n: int, initial: float, basis: float) -> Account:
+        """``n`` fresh accounts as one array-valued Account."""
+        one = cls.fresh(initial, basis)
+        return cls(**{f: np.full(n, getattr(one, f)) for f in _ACCOUNT_FIELDS})
+
+    def take(self, idx: np.ndarray, **override) -> Account:
+        """Copy of the lanes at ``idx``; ``override`` supplies already-sliced fields."""
+        return Account(**{f: getattr(self, f)[idx] for f in _ACCOUNT_FIELDS if f not in override},
+                       **override)
+
+    def put(self, idx: np.ndarray, other: Account) -> None:
+        """Write ``other`` (lanes or a scalar account) into the lanes at ``idx``."""
+        for f in _ACCOUNT_FIELDS:
+            getattr(self, f)[idx] = getattr(other, f)
+
+    def reset(self, idx: np.ndarray, initial: float) -> None:
+        """Start the lanes at ``idx`` on a fresh account (new stage)."""
+        self.put(idx, Account.fresh(initial, self.basis[idx]))
+
     @property
     def profit(self):
         return self.balance - self.initial
@@ -73,6 +94,9 @@ class Account:
     @property
     def trading_days_incl_today(self):
         return self.trading_days + np.asarray(self.traded_today, dtype=int)
+
+
+_ACCOUNT_FIELDS = tuple(f.name for f in fields(Account))
 
 
 class _Base(BaseModel):
@@ -97,6 +121,9 @@ class _Amount(_Base):
 
 
 class _Floor(_Amount):
+    # the floor level can change between trades of one day (not just at day boundaries)
+    moves_intraday: ClassVar[bool] = False
+
     includes_floating: bool = True  # check equity while trades are open, not just balance
     breach_on_touch: bool = True    # equity == floor counts as a breach
 
@@ -156,6 +183,7 @@ class IntradayTrailingMaxLoss(_Trailing):
     """
 
     type: Literal["intraday_trailing_max_loss"] = "intraday_trailing_max_loss"
+    moves_intraday: ClassVar[bool] = True
 
     def _peak(self, a):
         return a.equity_peak
