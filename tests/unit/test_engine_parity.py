@@ -95,7 +95,7 @@ def _check(spec, book, multipliers, sizing, n_paths, max_eval_days, funded_days,
             got = res.lane(m, p)
             want = {k2: getattr(ref, k2) for k2 in got}
             assert got == pytest.approx(want), f"k={k} path={p}"
-            row = res.eval_balances[m * n_paths + p]
+            row = res.eval_balances[m, p]
             n_rec = len(ref.eod_balances)
             np.testing.assert_allclose(row[:n_rec], ref.eod_balances, err_msg=f"k={k} p={p}")
             assert np.isnan(row[n_rec:]).all()

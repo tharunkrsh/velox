@@ -163,7 +163,7 @@ def simulate(
     """Monte Carlo the challenge across position sizes and write the tearsheet."""
     import time
 
-    from velox.report.build import SimulationRequest, run_simulation
+    from velox.app.simulation import SimulationRequest, run_simulation
     from velox.report.html import render_html
 
     trades = _load(log, fmt, tz, commission)

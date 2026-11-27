@@ -59,7 +59,8 @@ class LaneResults:
     n_payouts: np.ndarray
     gross_payouts: np.ndarray
     trader_payouts: np.ndarray
-    eval_balances: np.ndarray | None  # (n_recorded, max_eval_days) eval EOD balance, NaN after end
+    # (n_recorded, n_paths, max_eval_days) eval EOD balance per recorded multiplier, NaN after end
+    eval_balances: np.ndarray | None
 
     def lane(self, m: int, p: int) -> dict[str, object]:
         """Decoded result of one lane, keyed like the reference engine's ``PathResult``."""
@@ -338,18 +339,12 @@ def simulate(
     if len(parts) == 1:
         return parts[0]
 
-    def cat(name):
-        return np.concatenate([getattr(r, name) for r in parts], axis=1)
+    def cat(name):  # every per-lane field has the path axis at position 1
+        arrays = [getattr(r, name) for r in parts]
+        return None if arrays[0] is None else np.concatenate(arrays, axis=1)
 
-    rec = None
-    if record_multipliers:
-        k = len(record_multipliers)
-        rec = np.concatenate(
-            [r.eval_balances.reshape(k, -1, max_eval_days) for r in parts], axis=1
-        ).reshape(-1, max_eval_days)
-    fields = {f: cat(f) for f in LaneResults.__dataclass_fields__
-              if f not in ("multipliers", "eval_balances")}
-    return LaneResults(multipliers=parts[0].multipliers, eval_balances=rec, **fields)
+    fields = {f: cat(f) for f in LaneResults.__dataclass_fields__ if f != "multipliers"}
+    return LaneResults(multipliers=parts[0].multipliers, **fields)
 
 
 def _simulate_block(
@@ -537,5 +532,6 @@ def _simulate_block(
         consistency_delay_days=sh(delay), halted_days=sh(halted_days),
         funded_outcome=sh(f_outcome), funded_fail_rule=sh(f_fail_rule),
         funded_days_used=sh(f_days), n_payouts=sh(n_payouts), gross_payouts=sh(gross),
-        trader_payouts=sh(gross * split), eval_balances=rec,
+        trader_payouts=sh(gross * split),
+        eval_balances=None if rec is None else rec.reshape(-1, P, max_eval_days),
     )

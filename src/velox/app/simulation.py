@@ -1,11 +1,12 @@
 """Run a full simulation and assemble the canonical :class:`SimulationResult`.
 
 This is the one orchestration entry point: the CLI calls it today and the
-Phase 3 API will call it unchanged.
+Phase 3 API will call it unchanged. Rendering lives in :mod:`velox.report`.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
@@ -19,16 +20,17 @@ from velox.domain.sizing import IntratradeModel, SizingModel
 from velox.domain.stats import summarize
 from velox.domain.trades import TradeLog
 from velox.ingest.quality import assess
-from velox.report.schema import (
+from velox.result import (
     FanChart,
     InputSummary,
+    MultiplierStats,
     Recommendation,
     RulesetInfo,
     RunConfig,
     SimulationResult,
     StressCase,
 )
-from velox.sim.engine import simulate
+from velox.sim.engine import LaneResults, simulate
 from velox.sim.optimizer import best_index, grid_stats, stress_point
 from velox.sim.regime import InsufficientData, fit_regimes
 from velox.sim.resample import regime_bootstrap, stationary_bootstrap
@@ -109,38 +111,25 @@ def _ruleset_info(spec: RulesetSpec) -> RulesetInfo:
     )
 
 
-def run_simulation(log: TradeLog, spec: RulesetSpec, req: SimulationRequest) -> SimulationResult:
-    warnings: list[str] = []
-    quality = assess(log, spec.calendar, req.intratrade)
-    book = build_daybook(log, spec.calendar, req.intratrade)
-    sizing = SizingModel(unit_step=req.unit_step, max_units=req.max_units)
-    funded_days = req.funded_days if spec.funded is not None else 0
-    if spec.funded is None and req.funded_days:
-        warnings.append("This preset has no funded stage; EV counts no payouts.")
+def _economics(spec: RulesetSpec, req: SimulationRequest) -> tuple[float, bool]:
+    """(activation fee, challenge fee refunded with the first payout?)"""
+    f = spec.funded
     activation_fee = (req.activation_fee if req.activation_fee is not None
-                      else (spec.funded.activation_fee if spec.funded else 0.0))
-    refund = bool(spec.funded and spec.funded.payout.refund_challenge_fee)
-    horizon = req.max_eval_days + funded_days
-    rng = np.random.default_rng(req.seed)
-    day_idx, resampler = _day_index(book, req, horizon, rng, warnings)
-    sim_kw = dict(sizing=sizing, max_eval_days=req.max_eval_days, funded_days=funded_days,
-                  payout_cap=req.payout_cap)
-    econ = dict(fee=req.challenge_fee, activation_fee=activation_fee, refund=refund)
+                      else (f.activation_fee if f else 0.0))
+    return activation_fee, bool(f and f.payout.refund_challenge_fee)
 
-    ks = req.multipliers()
-    res = simulate(spec, book, day_idx, ks, **sim_kw)
-    grid = grid_stats(res, **econ)
-    i_cur = int(np.flatnonzero(ks == 1.0)[0])
-    i_rec = best_index(grid)
-    cur, rec = grid[i_cur], grid[i_rec]
 
-    # ── edge-haircut stress on a coarser grid (always including current + recommended) ──
+Simulate = Callable[..., LaneResults]  # (book, multipliers, **simulate_kw) -> LaneResults
+
+
+def _stress(sim: Simulate, book: DayBook, ks: np.ndarray, cur: MultiplierStats,
+            rec: MultiplierStats, req: SimulationRequest, econ: dict) -> list[StressCase]:
+    """Edge-haircut stress on a coarser grid (always including current + recommended)."""
     stride = max(1, int(round(req.stress_step / req.k_step)))
     coarse = np.unique(np.concatenate([ks[::stride], [cur.k, rec.k]]))
     stress = []
     for h in req.haircuts:
-        sres = simulate(spec, book.haircut(h), day_idx, coarse, **sim_kw)
-        sgrid = grid_stats(sres, **econ)
+        sgrid = grid_stats(sim(book.haircut(h), coarse), **econ)
         by_k = {g.k: g for g in sgrid}
         stress.append(StressCase(
             haircut=h, grid=[stress_point(g) for g in sgrid],
@@ -148,28 +137,59 @@ def run_simulation(log: TradeLog, spec: RulesetSpec, req: SimulationRequest) -> 
             at_base_recommendation=stress_point(by_k[rec.k]),
             at_current=stress_point(by_k[cur.k]),
         ))
+    return stress
 
-    # ── fan charts: replay the same paths at current and recommended size, recording ──
-    fan_ks = np.array([cur.k] if i_rec == i_cur else [cur.k, rec.k])
-    fres = simulate(spec, book, day_idx, fan_ks, record_multipliers=list(range(len(fan_ks))),
-                    **sim_kw)
-    per = req.n_paths
-    fans = [_fan(fres.eval_balances[j * per:(j + 1) * per], spec.initial_balance, float(k),
-                 "current size" if j == 0 else "recommended size", req.n_samples)
+
+def _fans(sim: Simulate, book: DayBook, spec: RulesetSpec, cur: MultiplierStats,
+          rec: MultiplierStats, n_samples: int) -> list[FanChart]:
+    """Replay the same paths at current and recommended size, recording EOD balances."""
+    fan_ks = np.array([cur.k] if rec.k == cur.k else [cur.k, rec.k])
+    fres = sim(book, fan_ks, record_multipliers=list(range(len(fan_ks))))
+    return [_fan(fres.eval_balances[j], spec.initial_balance, float(k),
+                 "current size" if j == 0 else "recommended size", n_samples)
             for j, k in enumerate(fan_ks)]
 
-    risk_cur = float(np.median(log.risk)) if log.has_risk else None
-    rationale = [
+
+def _rationale(cur: MultiplierStats, rec: MultiplierStats, stress: list[StressCase]) -> list[str]:
+    lines = [
         f"x{rec.k:g} maximises expected value per attempt: {rec.ev:+,.0f} "
         f"(95% CI {rec.ev_lo:+,.0f} to {rec.ev_hi:+,.0f}) vs {cur.ev:+,.0f} at your current size.",
         f"Pass probability {rec.p_pass.p:.1%} (95% CI {rec.p_pass.lo:.1%}-{rec.p_pass.hi:.1%}) "
         f"vs {cur.p_pass.p:.1%} now.",
     ]
     for s in stress:
-        rationale.append(
+        lines.append(
             f"If {s.haircut:.0%} of your edge disappears, x{rec.k:g} gives EV "
             f"{s.at_base_recommendation.ev:+,.0f} and pass {s.at_base_recommendation.p_pass.p:.1%};"
             f" the best size would be x{s.recommended_k:g}.")
+    return lines
+
+
+def run_simulation(log: TradeLog, spec: RulesetSpec, req: SimulationRequest) -> SimulationResult:
+    warnings: list[str] = []
+    quality = assess(log, spec.calendar, req.intratrade)
+    book = build_daybook(log, spec.calendar, req.intratrade)
+    funded_days = req.funded_days if spec.funded is not None else 0
+    if spec.funded is None and req.funded_days:
+        warnings.append("This preset has no funded stage; EV counts no payouts.")
+    activation_fee, refund = _economics(spec, req)
+    econ = dict(fee=req.challenge_fee, activation_fee=activation_fee, refund=refund)
+
+    rng = np.random.default_rng(req.seed)
+    day_idx, resampler = _day_index(book, req, req.max_eval_days + funded_days, rng, warnings)
+    sizing = SizingModel(unit_step=req.unit_step, max_units=req.max_units)
+
+    def sim(b: DayBook, ks: np.ndarray, **kw) -> LaneResults:
+        return simulate(spec, b, day_idx, ks, sizing=sizing, max_eval_days=req.max_eval_days,
+                        funded_days=funded_days, payout_cap=req.payout_cap, **kw)
+
+    ks = req.multipliers()
+    grid = grid_stats(sim(book, ks), **econ)
+    cur = grid[int(np.flatnonzero(ks == 1.0)[0])]
+    rec = grid[best_index(grid)]
+    stress = _stress(sim, book, ks, cur, rec, req, econ)
+    fans = _fans(sim, book, spec, cur, rec, req.n_samples)
+    risk_cur = float(np.median(log.risk)) if log.has_risk else None
 
     return SimulationResult(
         velox_version=velox.__version__,
@@ -191,7 +211,7 @@ def run_simulation(log: TradeLog, spec: RulesetSpec, req: SimulationRequest) -> 
             p_pass=rec.p_pass, p_pass_current=cur.p_pass,
             risk_per_trade_current=risk_cur,
             risk_per_trade_recommended=round(risk_cur * rec.k, 2) if risk_cur else None,
-            rationale=rationale,
+            rationale=_rationale(cur, rec, stress),
         ),
         stress=stress,
         fans=fans,

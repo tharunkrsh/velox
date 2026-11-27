@@ -21,7 +21,7 @@ import numpy as np
 
 from velox.domain.outcomes import FUNDED_CODE, OUTCOME_CODE, FundedOutcome, Outcome
 from velox.domain.rules.spec import FLOOR_TYPES
-from velox.report.schema import MultiplierStats, Prob, StressPoint
+from velox.result import MultiplierStats, Prob, StressPoint
 from velox.sim.engine import LaneResults
 
 _PASSED = OUTCOME_CODE[Outcome.PASSED]

@@ -11,7 +11,7 @@ from importlib import resources
 from jinja2 import Environment, PackageLoader
 from markupsafe import Markup
 
-from velox.report.schema import SimulationResult
+from velox.result import SimulationResult
 
 
 def _script_safe(text: str) -> str:

@@ -11,13 +11,13 @@ import pytest
 from typer.testing import CliRunner
 
 from velox.app.cli import app
+from velox.app.simulation import SimulationRequest, run_simulation
 from velox.domain.daybook import DayBook, build_daybook
 from velox.domain.sizing import IntratradeModel
 from velox.ingest import load_trades
 from velox.presets import load_preset
-from velox.report.build import SimulationRequest, run_simulation
 from velox.report.html import render_html
-from velox.report.schema import SimulationResult
+from velox.result import SimulationResult
 from velox.sim.engine import LaneResults, simulate
 from velox.sim.optimizer import multiplier_stats, wilson
 from velox.sim.resample import stationary_bootstrap
