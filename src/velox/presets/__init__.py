@@ -11,12 +11,24 @@ import yaml
 from velox.domain.rules.spec import RulesetSpec
 
 
+def parse_preset(text: str | bytes) -> RulesetSpec:
+    """Validate a preset YAML document. Raises ``ValueError`` (pydantic's
+    ``ValidationError`` included) when it is not a valid rule set."""
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        raise ValueError(f"preset is not valid YAML: {e}") from e
+    if not isinstance(data, dict):
+        raise ValueError("preset YAML must be a mapping of rule-set fields")
+    return RulesetSpec.model_validate(data)
+
+
 @cache
 def _bundled() -> dict[str, RulesetSpec]:
     out: dict[str, RulesetSpec] = {}
     for f in resources.files(__package__).iterdir():
         if f.name.endswith(".yaml"):
-            spec = RulesetSpec.model_validate(yaml.safe_load(f.read_text(encoding="utf-8")))
+            spec = parse_preset(f.read_text(encoding="utf-8"))
             out[spec.id] = spec
     return out
 
@@ -31,6 +43,6 @@ def load_preset(name_or_path: str) -> RulesetSpec:
         return _bundled()[name_or_path]
     path = Path(name_or_path)
     if path.suffix in {".yaml", ".yml"} and path.exists():
-        return RulesetSpec.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+        return parse_preset(path.read_text(encoding="utf-8"))
     known = ", ".join(sorted(_bundled()))
     raise KeyError(f"unknown preset '{name_or_path}' (bundled: {known})")

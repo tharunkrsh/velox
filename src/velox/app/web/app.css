@@ -1,0 +1,46 @@
+/* Web-UI-only styles. Colour tokens come from tearsheet.css, so the form and the
+   rendered report share one palette and both follow the system light/dark theme. */
+.app-head { margin-bottom: 20px; }
+fieldset { border: 0; margin: 0; padding: 0; min-width: 0; display: grid; gap: 12px;
+           grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
+legend { font-size: 15px; font-weight: 600; margin-bottom: 8px; padding: 0; }
+.form-grid { display: grid; gap: 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field[hidden] { display: none; }
+.label { font-size: 13px; color: var(--text-secondary); }
+.hint { font-size: 12px; color: var(--text-secondary); }
+input, select, button { font: inherit; color: var(--text-primary); }
+input:not([type="file"]), select {
+  width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--page);
+}
+input[type="file"] { font-size: 13px; max-width: 100%; }
+input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--series-1); outline-offset: 1px;
+}
+input[aria-invalid="true"] { border-color: var(--series-2); }
+.advanced { margin-top: 20px; border-top: 1px solid var(--grid); padding-top: 12px; }
+.advanced summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.actions, .result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; }
+.result-actions { margin: 24px 0 0; }
+button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+         background: var(--surface-1); cursor: pointer; }
+button:hover:not(:disabled) { filter: brightness(0.97); }
+button.primary { background: var(--series-1); border-color: transparent; color: #ffffff; font-weight: 600; }
+button:disabled { opacity: .6; cursor: progress; }
+.status { color: var(--text-secondary); font-size: 14px; font-variant-numeric: tabular-nums; }
+.inspect { margin-top: 20px; padding: 12px 14px; border-radius: 8px; background: var(--page);
+           border: 1px solid var(--grid); font-size: 14px; }
+.inspect p { margin: 0; }
+.inspect ul { margin: 8px 0 0; padding-left: 20px; }
+.inspect.bad, .error { border: 1px solid var(--series-2); }
+.error { background: var(--warn-bg); border-radius: 8px; padding: 12px 14px; margin: 0 0 16px; }
+#velox-root { margin-top: 8px; }
+@media (max-width: 760px) {
+  .form-grid, .form-grid.three { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  fieldset { grid-template-columns: minmax(0, 1fr); }
+}

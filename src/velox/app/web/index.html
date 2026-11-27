@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VELOX simulator</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/assets/tearsheet.css">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<main>
+  <header class="app-head">
+    <div class="eyebrow">VELOX</div>
+    <h1>Prop-firm challenge simulator</h1>
+    <p class="sub">Upload your trade log, pick a challenge, and see your pass probability and the
+      position size that maximises expected value. The server runs on this machine and keeps
+      nothing between requests.</p>
+  </header>
+
+  <form id="sim-form" class="card" novalidate>
+    <div class="form-grid">
+      <fieldset>
+        <legend>Trade log</legend>
+        <label class="field wide">
+          <span class="label">File</span>
+          <input type="file" name="file" id="file" accept=".csv,.tsv,.txt,text/csv" required>
+        </label>
+        <label class="field">
+          <span class="label">Format</span>
+          <select name="format" id="format">
+            <option value="generic">Generic CSV</option>
+            <option value="mt5">MetaTrader 5 positions</option>
+            <option value="tradovate">Tradovate performance</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="label">Timestamp timezone</span>
+          <input name="tz" id="tz" list="tz-list" placeholder="e.g. America/Chicago" autocomplete="off">
+          <span class="hint" id="tz-hint">Needed when timestamps have no UTC offset. Broker server time is rarely UTC.</span>
+        </label>
+        <label class="field" id="commission-field" hidden>
+          <span class="label">Commission per contract (round turn)</span>
+          <input type="number" name="commission_per_unit" id="commission" min="0" step="0.01" value="0">
+          <span class="hint">Tradovate reports gross P&amp;L.</span>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Challenge</legend>
+        <label class="field wide">
+          <span class="label">Rule preset</span>
+          <select name="preset" id="preset"></select>
+          <span class="hint" id="preset-hint"></span>
+        </label>
+        <label class="field">
+          <span class="label">Challenge fee you pay ($)</span>
+          <input type="number" name="challenge_fee" id="fee" min="0" step="1" required>
+        </label>
+        <label class="field">
+          <span class="label">Account size ($)</span>
+          <input type="number" name="balance" id="balance" min="1" step="1">
+          <span class="hint">Leave blank for the preset size.</span>
+        </label>
+      </fieldset>
+    </div>
+
+    <div id="inspect" class="inspect" aria-live="polite" hidden></div>
+
+    <details class="advanced">
+      <summary>Advanced settings</summary>
+      <div class="form-grid three">
+        <label class="field"><span class="label">Activation fee ($)</span>
+          <input type="number" name="activation_fee" min="0" step="1" data-req>
+          <span class="hint">Blank = preset value.</span></label>
+        <label class="field"><span class="label">Paths per size</span>
+          <input type="number" name="n_paths" min="100" step="100" data-req data-int></label>
+        <label class="field"><span class="label">Seed</span>
+          <input type="number" name="seed" step="1" data-req data-int></label>
+        <label class="field"><span class="label">Smallest size ×</span>
+          <input type="number" name="k_min" min="0.01" step="0.05" data-req></label>
+        <label class="field"><span class="label">Largest size ×</span>
+          <input type="number" name="k_max" min="0.01" step="0.05" data-req></label>
+        <label class="field"><span class="label">Size step</span>
+          <input type="number" name="k_step" min="0.01" step="0.01" data-req></label>
+        <label class="field"><span class="label">Resampler</span>
+          <select name="resampler" data-req>
+            <option value="stationary">Stationary block bootstrap</option>
+            <option value="regime">Regime-aware (HMM)</option>
+          </select></label>
+        <label class="field"><span class="label">Mean block length (days)</span>
+          <input type="number" name="block_len" min="1" step="0.5" data-req></label>
+        <label class="field"><span class="label">Intra-trade loss model</span>
+          <select name="intratrade" id="intratrade" data-req></select></label>
+        <label class="field"><span class="label">Evaluation cap (trading days)</span>
+          <input type="number" name="max_eval_days" min="1" step="1" data-req data-int></label>
+        <label class="field"><span class="label">Funded horizon (trading days)</span>
+          <input type="number" name="funded_days" min="0" step="1" data-req data-int></label>
+        <label class="field"><span class="label">Payout cap ($)</span>
+          <input type="number" name="payout_cap" min="1" step="1" data-req>
+          <span class="hint">Blank = no cap.</span></label>
+        <label class="field"><span class="label">Edge haircuts</span>
+          <input name="haircuts" placeholder="0.25, 0.5" data-req data-list>
+          <span class="hint">Comma-separated shares of your edge removed.</span></label>
+        <label class="field"><span class="label">Round units to step</span>
+          <input type="number" name="unit_step" min="0" step="any" data-req>
+          <span class="hint">e.g. 1 for whole contracts.</span></label>
+        <label class="field"><span class="label">Max units per trade</span>
+          <input type="number" name="max_units" min="0" step="any" data-req></label>
+        <label class="field wide"><span class="label">Custom preset YAML</span>
+          <input type="file" name="preset_file" id="preset-file" accept=".yaml,.yml">
+          <span class="hint">Overrides the preset list above.</span></label>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button type="submit" id="run" class="primary">Run simulation</button>
+      <span id="status" class="status" aria-live="polite"></span>
+    </div>
+  </form>
+
+  <div id="error" class="error" role="alert" hidden></div>
+
+  <section id="results" hidden>
+    <div class="result-actions">
+      <button type="button" id="dl-html">Download tearsheet (HTML)</button>
+      <button type="button" id="dl-json">Download result (JSON)</button>
+    </div>
+    <div id="velox-root"></div>
+  </section>
+
+  <datalist id="tz-list">
+    <option value="UTC"><option value="America/New_York"><option value="America/Chicago">
+    <option value="America/Los_Angeles"><option value="Europe/London"><option value="Europe/Prague">
+    <option value="Europe/Athens"><option value="Asia/Tokyo"><option value="Australia/Sydney">
+  </datalist>
+</main>
+<script src="/assets/renderer.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>

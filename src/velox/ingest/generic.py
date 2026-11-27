@@ -17,6 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from velox.domain.trades import TradeLog, TradeLogError
 
+# a file on disk, or the raw bytes of an upload (the web API never writes uploads to disk)
+Source = str | Path | bytes
+
 
 class ColumnMapping(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -44,16 +47,18 @@ def _to_number(s: pd.Series) -> pd.Series:
                          errors="raise")
 
 
-def read_table(path: str | Path) -> pd.DataFrame:
+def read_table(source: Source) -> pd.DataFrame:
     """Read a delimited export regardless of encoding (UTF-8/UTF-16 with BOM, as MT5
     desktop writes) and delimiter (comma, tab or semicolon). All cells as text."""
-    raw = Path(path).read_bytes()
+    raw = source if isinstance(source, bytes) else Path(source).read_bytes()
     if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
         text = raw.decode("utf-16")
     else:
         text = raw.decode("utf-8-sig", errors="replace")
     header = text.splitlines()[0] if text else ""
     sep = "\t" if "\t" in header else (";" if header.count(";") > header.count(",") else ",")
+    if not header.strip():
+        raise TradeLogError("the trade log is empty")
     df = pd.read_csv(io.StringIO(text), sep=sep, dtype=str, skipinitialspace=True,
                      keep_default_na=False, na_values=[""])
     df.columns = [str(c).strip() for c in df.columns]
@@ -99,5 +104,5 @@ def frame_to_tradelog(raw: pd.DataFrame, m: ColumnMapping) -> TradeLog:
     return TradeLog.from_frame(df)
 
 
-def read_csv(path: str | Path, m: ColumnMapping) -> TradeLog:
-    return frame_to_tradelog(read_table(path), m)
+def read_csv(source: Source, m: ColumnMapping) -> TradeLog:
+    return frame_to_tradelog(read_table(source), m)

@@ -10,8 +10,8 @@ VELOX takes your own trade log and answers three questions:
 2. What size multiplier maximises expected value (funded payouts minus challenge fees)?
 3. What does that look like? (a shareable, offline HTML tearsheet)
 
-> Status: **Phase 2 of 3**. Ingestion, rule engine, presets, `replay`, Monte Carlo, the
-> sizing optimizer and the HTML/JSON report all work. Phase 3 is the local web simulator.
+> Status: **Phase 3 of 3**. Ingestion, rule engine, presets, `replay`, Monte Carlo, the
+> sizing optimizer, the HTML/JSON report and the local web simulator (`velox serve`) all work.
 
 ## Quickstart
 
@@ -22,7 +22,40 @@ uv run velox inspect  tests/fixtures/futures_journal.csv -p topstep-50k --tz Ame
 uv run velox replay   tests/fixtures/futures_journal.csv -p topstep-50k --tz America/Chicago
 uv run velox simulate tests/fixtures/futures_journal.csv -p topstep-50k --tz America/Chicago \
     --fee 49 --out out/report.html --json out/result.json
+uv run velox serve        # web simulator on http://127.0.0.1:8765/
 ```
+
+## Web simulator and HTTP API
+
+`velox serve` starts a local web UI and the HTTP API behind it (OpenAPI docs at `/api/docs`).
+Upload a log, pick a preset, enter the fee, and the page shows a data-quality preview, then the
+full report, drawn by the same `renderer.js` and `tearsheet.css` as the offline tearsheet.
+Results download as HTML or JSON.
+
+The API is stateless. Each request carries the log, preset and settings, uploads are parsed in
+memory and never written to disk, and nothing is kept between requests.
+`POST /api/simulate` returns the same bytes as `velox simulate --json` for the same inputs.
+
+| endpoint | input | output |
+|---|---|---|
+| `GET /api/meta` | | presets, formats, request defaults, limits |
+| `POST /api/inspect` | multipart `file`, `preset` (or `preset_file` YAML), `format`, `tz`, `commission_per_unit`, `balance` | data-quality summary |
+| `POST /api/simulate` | the same fields + `request` (a `SimulationRequest` as JSON) | `SimulationResult` |
+| `POST /api/report` | `SimulationResult` JSON | HTML tearsheet (attachment) |
+
+Requests may name bundled presets only. A custom firm is sent as a YAML upload, never as a
+server path. `ApiLimits` caps:
+
+- upload size (10 MB)
+- paths per size (50,000)
+- grid size (121 multipliers)
+- edge haircuts (4)
+- simulated horizon (500 days)
+- concurrent simulations (2; extra requests get `429`)
+
+There is no authentication. If you bind anything other than localhost, `serve` prints a
+warning. For a hosted deployment, run `uvicorn --factory velox.app.api:create_app` behind a
+proxy that enforces auth and request size.
 
 On OneDrive/Dropbox folders, keep the virtualenv outside the synced folder
 (`UV_PROJECT_ENVIRONMENT=<path outside the sync folder>`). Sync clients lock files in `.venv`.
@@ -121,9 +154,9 @@ src/velox/
   ingest/    generic CSV, MT5, Tradovate, data-quality report
   presets/   versioned firm rule YAMLs
   sim/       resamplers, regime HMM, vectorised engine, optimizer (EV, Wilson CIs)
-  report/    SimulationResult schema, build (orchestration), HTML tearsheet + renderer.js
-  app/       CLI (Phase 3: FastAPI + local web UI)
-tests/       golden rule scenarios, engine-vs-reference parity, adapters, pipeline
+  report/    HTML tearsheet: template + shared renderer.js / tearsheet.css
+  app/       simulation orchestration, CLI, FastAPI app (api.py) + web UI (web/)
+tests/       golden rule scenarios, engine-vs-reference parity, adapters, pipeline, API
 ```
 
 The rule maths lives once, in `domain/rules/spec.py`, written with NumPy operations. The plain

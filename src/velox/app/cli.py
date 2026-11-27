@@ -5,6 +5,7 @@ Commands:
     velox inspect  LOG --preset P --tz TZ         parse a trade log, report data quality
     velox replay   LOG --preset P --tz TZ         run the actual history through the rules
     velox simulate LOG --preset P --tz TZ --fee F Monte Carlo sizes, write the tearsheet
+    velox serve                                   local web simulator + HTTP API
 """
 
 from __future__ import annotations
@@ -211,3 +212,28 @@ def simulate(
 
 def _money(v: float | None) -> str:
     return "n/a" if v is None else f"{v:,.0f}"
+
+
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Interface to bind")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port")] = 8765,
+    open_browser: Annotated[bool, typer.Option("--open/--no-open",
+                                               help="Open the UI in a browser")] = True,
+) -> None:
+    """Start the local web simulator and its HTTP API (docs at /api/docs)."""
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from velox.app.api import create_app
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        typer.secho(f"warning: binding {host}; the API has no authentication, so anyone who "
+                    "can reach this port can run simulations.", fg="yellow")
+    url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}/"
+    typer.echo(f"VELOX simulator on {url}  (Ctrl+C to stop)")
+    if open_browser:
+        threading.Timer(1.0, webbrowser.open, [url]).start()
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning")

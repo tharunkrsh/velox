@@ -16,19 +16,17 @@ soldTimestamp`` (``duration``, fill ids and price-format columns are ignored).
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 
 from velox.domain.trades import TradeLog, TradeLogError
-from velox.ingest.generic import _to_number, read_table
+from velox.ingest.generic import Source, _to_number, read_table
 
 REQUIRED = ("symbol", "qty", "pnl", "boughtTimestamp", "soldTimestamp")
 FORMAT = "%m/%d/%Y %H:%M:%S"
 
 
-def read(path: str | Path, timezone: str, commission_per_unit: float = 0.0) -> TradeLog:
-    raw = read_table(path)
+def read(source: Source, timezone: str, commission_per_unit: float = 0.0) -> TradeLog:
+    raw = read_table(source)
     missing = [c for c in REQUIRED if c not in raw.columns]
     if missing:
         raise TradeLogError(f"not a Tradovate Performance export; missing columns {missing}")

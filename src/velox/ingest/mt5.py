@@ -19,10 +19,8 @@ Layout (Toolbox > History > Positions; desktop export or copy/paste):
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from velox.domain.trades import TradeLog
-from velox.ingest.generic import ColumnMapping, frame_to_tradelog, read_table
+from velox.ingest.generic import ColumnMapping, Source, frame_to_tradelog, read_table
 
 
 def mapping(timezone: str) -> ColumnMapping:
@@ -38,8 +36,8 @@ def mapping(timezone: str) -> ColumnMapping:
     )
 
 
-def read(path: str | Path, timezone: str) -> TradeLog:
-    raw = read_table(path)
+def read(source: Source, timezone: str) -> TradeLog:
+    raw = read_table(source)
     if {"Time.1", "Symbol"} <= set(raw.columns):
         raw = raw.dropna(subset=["Time.1", "Symbol"]).reset_index(drop=True)
     return frame_to_tradelog(raw, mapping(timezone))

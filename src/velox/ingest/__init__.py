@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from velox.domain.trades import TradeLog
 from velox.ingest import mt5, tradovate
-from velox.ingest.generic import ColumnMapping, read_csv, read_table
+from velox.ingest.generic import ColumnMapping, Source, read_csv, read_table
 
 Format = Literal["generic", "mt5", "tradovate"]
 FORMATS: tuple[str, ...] = ("generic", "mt5", "tradovate")
@@ -20,7 +20,7 @@ CANONICAL = ColumnMapping(open_time="open_time", close_time="close_time", pnl="p
 
 
 def load_trades(
-    path: str | Path,
+    source: Source,
     fmt: Format = "generic",
     timezone: str | None = None,
     mapping: ColumnMapping | None = None,
@@ -34,19 +34,29 @@ def load_trades(
         raise ValueError(
             f"a commission per unit only applies to {', '.join(GROSS_PNL_FORMATS)} exports, "
             f"which report gross P&L; '{fmt}' P&L is already net of commission")
+    if timezone is not None:
+        _check_timezone(timezone)
     if fmt in ("mt5", "tradovate") and timezone is None:
         raise ValueError(f"{fmt} exports have no UTC offset; pass the export's timezone (--tz)")
     if fmt == "mt5":
-        return mt5.read(path, timezone)
+        return mt5.read(source, timezone)
     if fmt == "tradovate":
-        return tradovate.read(path, timezone, commission_per_unit)
-    m = mapping or _infer_canonical(path)
+        return tradovate.read(source, timezone, commission_per_unit)
+    m = mapping or _infer_canonical(source)
     if timezone is not None:
         m = m.model_copy(update={"timezone": timezone})
-    return read_csv(path, m)
+    return read_csv(source, m)
 
 
-def _infer_canonical(path: str | Path) -> ColumnMapping:
-    header = list(read_table(path).columns)
+def _check_timezone(name: str) -> None:
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as e:
+        raise ValueError(f"unknown timezone '{name}'; use an IANA name such as "
+                         "Europe/Prague or America/Chicago") from e
+
+
+def _infer_canonical(source: Source) -> ColumnMapping:
+    header = list(read_table(source).columns)
     optional = {c: c for c in ("symbol", "units", "risk", "mae") if c in header}
     return CANONICAL.model_copy(update=optional)

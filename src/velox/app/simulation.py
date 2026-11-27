@@ -11,7 +11,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 import velox
 from velox.domain.daybook import DayBook, build_daybook
@@ -66,6 +66,12 @@ class SimulationRequest(BaseModel):
     max_units: float | None = Field(default=None, gt=0)
     intratrade: IntratradeModel = IntratradeModel.AUTO
     n_samples: int = Field(default=8, ge=0)
+
+    @model_validator(mode="after")
+    def _grid_is_ordered(self) -> SimulationRequest:
+        if self.k_max < self.k_min:
+            raise ValueError(f"k_max ({self.k_max:g}) is below k_min ({self.k_min:g})")
+        return self
 
     def multipliers(self) -> np.ndarray:
         n = int(round((self.k_max - self.k_min) / self.k_step)) + 1
