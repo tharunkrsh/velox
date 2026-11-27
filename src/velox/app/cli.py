@@ -33,8 +33,8 @@ PresetOpt = Annotated[str, typer.Option("--preset", "-p", help="Preset id or YAM
 TzOpt = Annotated[str | None, typer.Option("--tz", help="Source timezone of naive timestamps")]
 FmtOpt = Annotated[str, typer.Option("--format", "-f", help="generic | mt5 | tradovate")]
 CommOpt = Annotated[float, typer.Option(
-    "--commission-per-unit", help="Round-turn commission per contract to deduct (Tradovate "
-    "reports gross P&L)")]
+    "--commission-per-unit", help="Round-turn commission per contract to deduct. Tradovate "
+    "only (it reports gross P&L); other formats are already net and reject it")]
 BalanceOpt = Annotated[float | None, typer.Option("--balance", help="Override account size")]
 IntraOpt = Annotated[IntratradeModel, typer.Option("--intratrade", help="Floating-loss model")]
 

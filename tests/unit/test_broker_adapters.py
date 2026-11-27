@@ -69,6 +69,28 @@ def test_broker_formats_require_timezone_and_columns():
         load_trades(FIX / "mt5_positions_comma.csv", fmt="tradovate", timezone="UTC")
 
 
+@pytest.mark.parametrize("fmt,name", [("generic", "topstep_sample.csv"),
+                                      ("mt5", "mt5_positions_comma.csv")])
+def test_commission_rejected_for_net_pnl_formats(fmt, name):
+    """A commission on an already-net P&L would be silently ignored (or double-counted)."""
+    with pytest.raises(ValueError, match="already net"):
+        load_trades(FIX / name, fmt=fmt, timezone="UTC", commission_per_unit=1.24)
+
+
+def test_negative_commission_rejected():
+    with pytest.raises(ValueError, match=">= 0"):
+        load_trades(FIX / "tradovate_performance.csv", fmt="tradovate",
+                    timezone="America/Chicago", commission_per_unit=-1.0)
+
+
+def test_cli_rejects_commission_for_net_pnl_format():
+    res = CliRunner().invoke(app, ["inspect", str(FIX / "topstep_sample.csv"), "--tz",
+                                   "America/Chicago", "-p", "topstep-50k",
+                                   "--commission-per-unit", "1.24"])
+    assert res.exit_code == 2
+    assert "already net" in res.output
+
+
 def test_cli_replay_with_broker_formats():
     runner = CliRunner()
     res = runner.invoke(app, ["replay", str(FIX / "tradovate_performance.csv"), "-f", "tradovate",
